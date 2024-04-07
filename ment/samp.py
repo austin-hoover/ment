@@ -16,38 +16,39 @@ def get_grid_points(*grid_coords):
     return np.stack([C.ravel() for C in np.meshgrid(*grid_coords, indexing="ij")], axis=-1)
 
 
-def sample_bins(values: np.ndarray, size: int, unravel: bool = True) -> np.ndarray:
+def sample_bins(values: np.ndarray, size: int, rng: np.random.Generator) -> np.ndarray:        
     pdf = np.ravel(values)
     idx = np.flatnonzero(pdf)
     pdf = pdf[idx]
     pdf = pdf / np.sum(pdf)
-    idx = np.random.choice(idx, size, replace=True, p=pdf)
-    if unravel:
-        idx = np.unravel_index(idx, shape=values.shape)
+    idx = rng.choice(idx, size, replace=True, p=pdf)
     return idx
     
 
 def sample_hist(
     values: np.ndarray, 
     edges: List[np.ndarray], 
-    size: int = 100, 
+    size: int,
+    rng: np.random.Generator,
     noise: float = 0.0, 
 ) -> np.ndarray:
-    idx = sample_bins(values, size, unravel=True)
+    idx = sample_bins(values, size, rng=rng)
+    idx = np.unravel_index(idx, shape=values.shape)
+    
     x = np.zeros((size, values.ndim))
     for axis in range(x.shape[1]):
         lb = edges[axis][idx[axis]]
         ub = edges[axis][idx[axis] + 1]
-        x[:, axis] = np.random.uniform(lb, ub)
+        x[:, axis] = rng.uniform(lb, ub)
         if noise:
             delta = ub - lb
-            x[:, axis] += 0.5 * self.noise * np.random.uniform(-delta, delta)
+            x[:, axis] += 0.5 * self.noise * rng.uniform(-delta, delta)
     x = np.squeeze(x)
     return x
     
 
-def sample_hist_and_rebin(values: np.ndarray, size: int = 100) -> np.ndarray:
-    idx = sample_bins(values, size, unravel=False)
+def sample_hist_and_rebin(values: np.ndarray, size: int, rng: np.random.Generator) -> np.ndarray:
+    idx = sample_bins(values, size, rng=rng)
     edges = np.arange(values.size + 1) - 0.5
     values_out, _ = np.histogram(idx, bins=edges, density=False)
     values_out = np.reshape(values_out, values.shape)
@@ -61,12 +62,14 @@ class GridSampler:
         grid_shape: Tuple[int],
         noise: float = 0.0,
         store: bool = True,
+        seed: int = None
     ) -> None:
         self.grid_shape = grid_shape
         self.grid_limits = grid_limits
         self.ndim = len(grid_limits)
         self.noise = noise
         self.store = store
+        self.rng = np.random.default_rng(seed)
         
         self.grid_edges = [
             np.linspace(
@@ -82,15 +85,18 @@ class GridSampler:
     def get_grid_points(self) -> np.ndarray:
         if self.grid_points is not None:
             return self.grid_points
+            
         grid_points = get_grid_points(*self.grid_coords)
+        
         if self.store:
             self.grid_points = grid_points
+            
         return grid_points
 
     def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
         prob = prob_func(self.get_grid_points())
         prob = np.reshape(prob, self.grid_shape)
-        return sample_hist(prob, self.grid_edges, size, noise=self.noise)
+        return sample_hist(prob, self.grid_edges, size, noise=self.noise, rng=self.rng)
 
 
 class SliceGridSampler:
@@ -104,6 +110,7 @@ class SliceGridSampler:
         int_batches: int = 1,
         noise: float = 0.0,
         verbose: bool = False,
+        seed: int = None,
     ):
         self.grid_shape = grid_shape
         self.grid_limits = grid_limits
@@ -112,6 +119,7 @@ class SliceGridSampler:
         self.samp_dim = self.ndim - self.proj_dim
         self.noise = noise
         self.verbose = verbose
+        self.rng = np.random.default_rng(seed)
 
         self.grid_edges = [
             np.linspace(
@@ -165,13 +173,13 @@ class SliceGridSampler:
         elif self.int_method == "uniform":
             int_points = np.zeros((self.int_size, self.int_dim))
             for axis, (xmin, xmax) in zip(self.int_axis, self.int_limits):
-                int_points[:, axis] = np.random.uniform(xmin, xmax, size=self.int_size)
+                int_points[:, axis] = self.rng.uniform(xmin, xmax, size=self.int_size)
                 
         elif self.int_method == "gaussian":
             int_points = np.zeros((self.int_size, self.int_dim))
             scale = [xmax for (xmin, xmax) in self.int_limits]
             for axis, (xmin, xmax) in zip(self.int_axis, self.int_limits):
-                int_points[:, axis] = 0.75 * np.random.uniform(xmin, xmax, size=self.int_size)
+                int_points[:, axis] = 0.75 * self.rng.uniform(xmin, xmax, size=self.int_size)
         else:
             raise ValueError("Invalid int_method")  
         return int_points[:self.int_size]
@@ -188,13 +196,13 @@ class SliceGridSampler:
         rho = np.reshape(rho, self.proj_grid_shape)
         return rho
 
-    def __call__(self, prob_func: Callable, n: int) -> np.ndarray:
+    def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
         # Compute projection and resample to find number of particles in each projected bin.
         if self.verbose:
             print("Projecting")
         proj = self.project(prob_func)
         proj = proj / np.sum(proj)
-        sizes_loc = sample_hist_and_rebin(proj, n)
+        sizes_loc = sample_hist_and_rebin(proj, size, rng=self.rng)
           
         # Sample the remaining coordinates from within each bin the projected subspace.
         if self.verbose:
@@ -211,10 +219,10 @@ class SliceGridSampler:
             for axis, index in enumerate(indices):
                 lb = self.proj_grid_edges[axis][index]
                 ub = self.proj_grid_edges[axis][index + 1]
-                x_loc[:, axis] = np.random.uniform(lb, ub, size=size_loc)
+                x_loc[:, axis] = self.rng.uniform(lb, ub, size=size_loc)
                 if self.noise:
                     delta = ub - lb
-                    x_loc[:, axis] += self.noise * 0.5 * np.random.uniform(-delta, delta, size=size_loc)
+                    x_loc[:, axis] += self.noise * 0.5 * self.rng.uniform(-delta, delta, size=size_loc)
 
             # Set evaluation points on projected subpsace.
             for axis, index in enumerate(indices):
@@ -224,12 +232,12 @@ class SliceGridSampler:
             prob = prob_func(self.eval_points) 
             prob = np.reshape(prob, self.samp_grid_shape)  # could cut this step
             x_loc[:, self.samp_axis] = sample_hist(
-                prob, edges=self.samp_grid_edges, size=size_loc, noise=self.noise
+                prob, self.samp_grid_edges, size_loc, noise=self.noise, rng=self.rng,
             )
             
             x.append(x_loc)
 
         # Stack points from all bins, then shuffle.
         x = np.vstack(x)
-        np.random.shuffle(x)
+        self.rng.shuffle(x)
         return x
