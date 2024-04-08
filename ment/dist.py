@@ -1,3 +1,5 @@
+from typing import Callable
+from typing import List
 import numpy as np
 import scipy.stats
 
@@ -38,6 +40,7 @@ class Distribution:
         shuffle: bool = True, 
         noise: bool = None,
         decorr: bool = False, 
+        transform: Callable = None,
     ):
         self.ndim = ndim
         self.rng = np.random.default_rng(seed)
@@ -45,6 +48,7 @@ class Distribution:
         self.noise = noise
         self.shuffle = shuffle
         self.decorr = decorr
+        self.transform = transform
 
     def prob(self, x: np.ndarray) -> np.ndarray:
         raise NotImplementedError
@@ -59,26 +63,15 @@ class Distribution:
             x = corrupt(x, self.noise, rng=self.rng)
         if self.decorr:
             x = decorrelate(x, rng=self.rng)
+        if self.transform is not None:
+            x = self.transform(x)
         return x
 
     def _sample(self, n: int) -> np.ndarray:
         raise NotImplementedError
-        
-
-class Distribution2D(Distribution):
-    def __init__(self, shear: float = 0.0, **kws):
-        super().__init__(ndim=2, **kws)
-        self.shear = shear
-    
-    def _process(self, x: np.ndarray) -> np.ndarray:
-        sigma_old = np.std(x[:, 0])
-        x[:, 0] += self.shear * x[:, 1]
-        sigma_new = np.std(x[:, 0])
-        x[:, 0] *= (sigma_old / sigma_new)
-        return x
     
 
-class EightGaussians(Distribution2D):
+class EightGaussians(Distribution):
     def __init__(self, **kws):
         super().__init__(**kws)
         if self.noise is None:
@@ -90,11 +83,10 @@ class EightGaussians(Distribution2D):
         y = np.sin(theta)
         X = np.stack([x, y], axis=-1)
         X *= 1.5
-        X = self._process(X) 
         return X
 
 
-class Galaxy(Distribution2D):
+class Galaxy(Distribution):
     def __init__(self, turns=5, truncate=3.0, **kws):
         super().__init__(**kws)
         self.turns = turns
@@ -126,21 +118,39 @@ class Galaxy(Distribution2D):
         # Standardize the data set.
         X = X / np.std(X, axis=0)
         X = X * 0.85
-        X = self._process(X)
         return X
 
 
-class Gaussian(Distribution2D):
+class Gaussian(Distribution):
     def __init__(self, **kws):
         super().__init__(**kws)
 
     def _sample(self, n):
         X = self.rng.normal(size=(n, 2))
-        X = self._process(X)
         return X
-    
 
-class Hollow(Distribution2D):
+
+class GaussianMixture(Distribution):
+    def __init__(self, modes=7, xmax=3.0, scale=0.75, shiftscale=True, **kws):
+        super().__init__(**kws)
+        self.modes = modes
+        self.locs = self.rng.uniform(-xmax, xmax, size=(self.modes, self.ndim))
+        self.scales = scale * np.ones(self.modes)
+        self.shiftscale = shiftscale
+
+    def _sample(self, n: int) -> np.ndarray:
+        x = [
+            self.rng.normal(loc=loc, scale=scale, size=(n // self.modes, self.ndim))
+            for scale, loc in zip(self.scales, self.locs)
+        ]
+        x = np.vstack(x)
+        if self.shiftscale:
+            x = x - np.mean(x, axis=0)
+            x = x / np.std(x, axis=0)
+        return x
+
+
+class Hollow(Distribution):
     def __init__(self, exp=1.66, **kws):
         super().__init__(**kws)
         self.exp = exp
@@ -148,29 +158,17 @@ class Hollow(Distribution2D):
             self.noise = 0.05
 
     def _sample(self, n):
-        X = dist_nd.KV(d=self.d, rng=self.rng).sample_numpy(n)
-        r = self.rng.uniform(0.0, 1.0, size=X.shape[0]) ** (1.0 / (self.exp * self.d))
-        X = X * r[:, None]
-        X = X / np.std(X, axis=0)
-        X = self._process(X)
-        return X
+        x = self.rng.normal(size=(n, self.ndim))
+        x /= np.linalg.norm(x, axis=1)[:, None]
+        x /= np.std(x, axis=0)
+        
+        r = self.rng.uniform(0.0, 1.0, size=n) ** (1.0 / (self.exp * self.ndim))
+        x *= r[:, None]
+        x /= np.std(x, axis=0)
+        return x
+        
 
-
-class KV(Distribution2D):
-    def __init__(self, **kws):
-        super().__init__(**kws)
-        if self.noise is None:
-            self.noise = 0.05
-
-    def _sample(self, n):
-        X = dist_nd.KV(d=4, rng=self.rng).sample_numpy(n)
-        X = X[:, :2]
-        X = X / np.std(X, axis=0)
-        X = self._process(X)
-        return X
-
-
-class Pinwheel(Distribution2D):
+class Pinwheel(Distribution):
     def __init__(self, **kws):
         super().__init__(**kws)
         if self.noise is None:
@@ -185,11 +183,10 @@ class Pinwheel(Distribution2D):
         y = a * np.sin(theta) + b * np.cos(theta)
         X = np.stack([x, y], axis=-1)
         X = X / np.std(X, axis=0)
-        X = self._process(X)
         return X
 
 
-class Rings(Distribution2D):
+class Rings(Distribution):
     def __init__(self, n_rings=2, **kws):
         super().__init__(**kws)
         self.n_rings = n_rings
@@ -199,18 +196,21 @@ class Rings(Distribution2D):
     def _sample(self, n):
         n_outer = n // self.n_rings
         sizes = [n - (self.n_rings - 1) * n_outer] + (self.n_rings - 1) * [n_outer]
-        radii = np.linspace(0.0, 1.0, self.n_rings + 1)[1:]
-        X = []
-        dist = dist_nd.KV(d=self.d, rng=self.rng)
+        radii = np.linspace(0.0, 1.0, self.n_rings + 1)
+        radii = radii[1:]
+        
+        x = []
         for size, radius in zip(sizes, radii):
-            X.append(radius * dist.sample(size))
-        X = np.vstack(X)
-        X = X / np.std(X, axis=0)
-        X = self._process(X)
-        return X
+            x_loc = self.rng.normal(size=(n, self.ndim))
+            x_loc /= np.linalg.norm(x_loc, axis=1)[:, None]
+            x_loc /= np.std(x_loc, axis=0)
+            x.append(radius * x_loc)
+        x = np.vstack(x)
+        x /= np.std(x, axis=0)
+        return x
         
 
-class SwissRoll(Distribution2D):
+class SwissRoll(Distribution):
     def __init__(self, **kws):
         super().__init__(**kws)
         if self.noise is None:
@@ -218,13 +218,12 @@ class SwissRoll(Distribution2D):
 
     def _sample(self, n):
         t = 1.5 * np.pi * (1.0 + 2.0 * self.rng.uniform(0.0, 1.0, size=n))
-        X = np.stack([t * np.cos(t), t * np.sin(t)], axis=-1)
-        X = X / np.std(X, axis=0)
-        X = self._process(X)
-        return X
+        x = np.stack([t * np.cos(t), t * np.sin(t)], axis=-1)
+        x = x / np.std(x, axis=0)
+        return x
 
 
-class TwoSpirals(Distribution2D):
+class TwoSpirals(Distribution):
     def __init__(self, exp=0.65, **kws):
         super().__init__(**kws)
         self.exp = exp
@@ -236,28 +235,43 @@ class TwoSpirals(Distribution2D):
         t = 3.0 * np.pi * np.random.uniform(0.0, 1.0, size=n) ** self.exp    
         r = t / 2.0 / np.pi * np.sign(self.rng.normal(size=n))
         t = t + self.rng.normal(size=n, scale=np.linspace(0.0, 1.0, n))
-        X = np.stack([-r * np.cos(t), r * np.sin(t)], axis=-1)
-        X = X / np.std(X, axis=0)
-        X = self._process(X)
-        return X
+        x = np.stack([-r * np.cos(t), r * np.sin(t)], axis=-1)
+        x = x / np.std(x, axis=0)
+        return x
 
 
-class WaterBag(Distribution2D):
+class KV(Distribution):
+    def __init__(self, **kws):
+        super().__init__(**kws)
+        if self.noise is None:
+            self.noise = 0.05
+
+    def _sample(self, n):
+        x = self.rng.normal(size=(n, self.ndim))
+        x /= np.linalg.norm(x, axis=1)[:, None]
+        x /= np.std(x, axis=0)
+        return x
+
+
+class WaterBag(Distribution):
     def __init__(self, **kws):
         super().__init__(**kws)
 
     def _sample(self, n):
-        X = dist_nd.WaterBag(d=4, rng=self.rng).sample_numpy(n)
-        X = X[:, :2]
-        X = X / np.std(X, axis=0)
-        X = self._process(X)
-        return X
+        x = self.rng.normal(size=(n, self.ndim))
+        x /= np.linalg.norm(x, axis=1)[:, None]
+        x /= np.std(x, axis=0)
+
+        r = self.rng.uniform(0.0, 1.0, size=x.shape[0]) ** (1.0 / self.ndim)
+        x *= r[:, None]
+        x /= np.std(x, axis=0)
+        return x
 
 
 DISTRIBUTIONS = {
     "eight-gaussians": EightGaussians,
     "galaxy": Galaxy,
-    "gaussian": Gaussian,
+    "gaussian_mixture": GaussianMixture,
     "hollow": Hollow,
     "kv": KV,
     "pinwheel": Pinwheel,
@@ -266,7 +280,6 @@ DISTRIBUTIONS = {
     "two-spirals": TwoSpirals,
     "waterbag": WaterBag,
 }
-
 
 def get_dist(name, **kws):
     return DISTRIBUTIONS[name](**kws)

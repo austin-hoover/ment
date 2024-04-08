@@ -19,16 +19,17 @@ def func(x: np.ndarray) -> np.ndarray:
     return prob
 
 
-ndim = 6
-grid_shape = [25] * ndim
+ndim = 4
+grid_shape = [75] * ndim
 grid_limits = [(-5.0, 5.0)] * ndim
 n_samples = 100_000
+noise = 0.5
 
 
 sampler = ment.samp.GridSampler(
     grid_limits=grid_limits,
     grid_shape=grid_shape,
-    noise=0.0,
+    noise=noise,
 )
 
 print("GS")
@@ -39,7 +40,7 @@ x = sampler(func, n_samples)
 print("time =", time.time() - start_time)
 
 
-proj_dim = 3
+proj_dim = 1
 sampler = ment.samp.SliceGridSampler(
     grid_limits=grid_limits,
     grid_shape=grid_shape,
@@ -47,7 +48,7 @@ sampler = ment.samp.SliceGridSampler(
     int_size=(15 ** proj_dim),
     int_method="grid",
     int_batches=1,
-    noise=0.0,
+    noise=noise,
     verbose=True,
 )
 

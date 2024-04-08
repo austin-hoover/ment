@@ -17,11 +17,12 @@ def get_grid_points(*grid_coords):
 
 
 def sample_bins(values: np.ndarray, size: int, rng: np.random.Generator) -> np.ndarray:        
-    pdf = np.ravel(values)
-    idx = np.flatnonzero(pdf)
-    pdf = pdf[idx]
-    pdf = pdf / np.sum(pdf)
-    idx = rng.choice(idx, size, replace=True, p=pdf)
+    # pdf = np.ravel(values)
+    # idx = np.flatnonzero(pdf)
+    # pdf = pdf[idx]
+    # pdf = pdf / np.sum(pdf)
+    # idx = rng.choice(idx, size, replace=True, p=pdf)
+    idx = rng.choice(values.size, size, replace=True, p=(np.ravel(values) / np.sum(values)))
     return idx
     
 
@@ -42,7 +43,7 @@ def sample_hist(
         x[:, axis] = rng.uniform(lb, ub)
         if noise:
             delta = ub - lb
-            x[:, axis] += 0.5 * self.noise * rng.uniform(-delta, delta)
+            x[:, axis] += 0.5 * noise * rng.uniform(-delta, delta)
     x = np.squeeze(x)
     return x
     

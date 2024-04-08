@@ -68,8 +68,8 @@ if __name__ == "__main__":
     import time
     
     print("get_grid_points")
-    dim = 6
-    res = 20
+    dim = 4
+    res = 50
     
     print("numpy")
     start_time = time.time()
