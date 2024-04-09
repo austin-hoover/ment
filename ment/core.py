@@ -1,4 +1,5 @@
 import math
+import time
 from typing import Any
 from typing import Callable
 from typing import List
@@ -12,8 +13,21 @@ from .prior import UniformPrior
 
 
 class LagrangeFunction:
-    def __init__(self, ndim: int, coords: List[np.array], values: np.array) -> None:
+    def __init__(
+        self, 
+        ndim: int, 
+        coords: List[np.array],
+        values: np.array, 
+        interpolation_kws: dict = None
+    ) -> None:
         self.ndim = ndim
+        
+        self.interpolation_kws = interpolation_kws
+        if self.interpolation_kws is None:
+            self.interpolation_kws = dict()
+        self.interpolation_kws.setdefault("method", "linear")
+        self.interpolation_kws.setdefault("bounds_error", False)
+        self.interpolation_kws.setdefault("fill_value", 0.0)
 
         self.coords = coords
         if self.ndim == 1:
@@ -25,11 +39,7 @@ class LagrangeFunction:
     def set_values(self, values: np.ndarray) -> None:
         self.values = values
         self.interpolator = scipy.interpolate.RegularGridInterpolator(
-            self.coords,
-            self.values,
-            method="linear",
-            bounds_error=False, 
-            fill_value=0.0,
+            self.coords, self.values, **self.interpolation_kws
         )
         return self.values
 
@@ -47,6 +57,7 @@ class MENT:
         prior: Any,
         sampler: Callable,
         n_samples: int = 1_000_000, 
+        interpolation: dict = None,
         verbose: bool = True,
     ) -> None:
         self.ndim = ndim
@@ -61,7 +72,7 @@ class MENT:
         if self.prior is None:
             self.prior = UniformPrior(dim=dim, scale=100.0)
 
-        self.lagrange_functions = self.initialize_lagrange_functions()
+        self.lagrange_functions = self.initialize_lagrange_functions(**interpolation)
         
         self.sampler = sampler
         self.n_samples = int(n_samples)
@@ -78,14 +89,17 @@ class MENT:
             self.measurements = [[]]
         return self.measurements
 
-    def initialize_lagrange_functions(self) -> List[List[np.ndarray]]:
+    def initialize_lagrange_functions(self, **kws) -> List[List[np.ndarray]]:
         self.lagrange_functions = []
         for index in range(len(self.measurements)):
             self.lagrange_functions.append([])
             for measurement, diagnostic in zip(self.measurements[index], self.diagnostics[index]):
                 values = (measurement > 0.0).astype(np.float32)
                 lagrange_function = LagrangeFunction(
-                    ndim=measurement.ndim, coords=diagnostic.bin_coords, values=values
+                    ndim=measurement.ndim, 
+                    coords=diagnostic.bin_coords, 
+                    values=values, 
+                    interpolation_kws=kws,
                 )
                 self.lagrange_functions[-1].append(lagrange_function)
         return self.lagrange_functions
@@ -100,15 +114,19 @@ class MENT:
         return lagrange_function(diagnostic.project(u))
 
     def prob(self, x: np.ndarray) -> np.ndarray:
+        # t0 = time.time()
         prob = np.ones(x.shape[0])
+        # print(f"   ones: {time.time() - t0}")
+        
         for index, transform in enumerate(self.transforms):
+            # t0 = time.time()
             u = transform(x)
+            # print(f"   index={index} transform: {time.time() - t0}")
             for diag_index, diagnostic in enumerate(self.diagnostics[index]):
-                h = self.evaluate_lagrange_function(u, index, diag_index)
-                # h = np.clip(h, 0.0, 1.00e+10)  # stability
-                prob *= h
-        prob *= self.prior.prob(x)
-        return prob
+                # t0 = time.time()
+                prob *= self.evaluate_lagrange_function(u, index, diag_index)
+                # print(f"   index={index} lagrange: {time.time() - t0}")
+        return prob * self.prior.prob(x)
 
     def sample(self, size: int) -> np.ndarray:
         x = self.sampler(self.prob, size)
@@ -129,7 +147,7 @@ class MENT:
             for diag_index, diagnostic in enumerate(self.diagnostics[index]):
                 lagrange_function = self.lagrange_functions[index][diag_index]
                 measurement = self.measurements[index][diag_index]
-                prediction = self.simulate(index, diag_index)                
+                prediction = self.simulate(index, diag_index)                  
                 shape = lagrange_function.values.shape
                 lagrange_function.values = np.ravel(lagrange_function.values)
                 for i, (g_meas, g_pred) in enumerate(zip(np.ravel(measurement), np.ravel(prediction))):

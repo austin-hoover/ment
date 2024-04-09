@@ -95,9 +95,19 @@ class GridSampler:
         return grid_points
 
     def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
+        # t0 = time.time()
         prob = prob_func(self.get_grid_points())
+        # print(time.time() - t0)
+ 
+        # t0 = time.time()
         prob = np.reshape(prob, self.grid_shape)
-        return sample_hist(prob, self.grid_edges, size, noise=self.noise, rng=self.rng)
+        # print(time.time() - t0)
+
+        # t0 = time.time()
+        x = sample_hist(prob, self.grid_edges, size, noise=self.noise, rng=self.rng)
+        # print(time.time() - t0)
+        
+        return x
 
 
 class SliceGridSampler:
