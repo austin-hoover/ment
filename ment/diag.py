@@ -6,14 +6,17 @@ import numpy as np
 
 
 class Histogram1D:
-    def __init__(self, axis: int, bin_edges: np.ndarray) -> None:
+    def __init__(self, axis: int, bin_edges: np.ndarray, direction: np.ndarray = None) -> None:
         self.axis = axis
+        self.direction = direction
         self.ndim = 1
         self.bin_edges = bin_edges
         self.bin_coords = 0.5 * (bin_edges[:-1] + bin_edges[1:])
         self.bin_volume = bin_edges[1] - bin_edges[0]
         
     def project(self, x: np.ndarray) -> np.ndarray:
+        if self.direction is not None:
+            return np.sum(x * self.direction, axis=1)
         return x[:, self.axis]
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
