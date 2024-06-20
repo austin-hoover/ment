@@ -6,8 +6,10 @@ build-backend = "hatchling.build"
 name = "ment"
 version = "0.0.1"
 dependencies = [
-    "numpy>=2.0.0",
+    "matplotlib=3.8.4",
+    "numpy",
+    "proplot @ git+https://github.com/austin-hoover/proplot@cfd060e2d6c922c7d80d21d23484454e11b17ab7",
+    "psdist @ git+https://github.com/austin-hoover/psdist@ffc52ed85fe759cbf5dac21000d88a370585e67b",
     "scipy",
+    "tqdm",
 ]
-requires-python = ">=3.8"
-readme = "README.md"
