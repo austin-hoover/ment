@@ -1,3 +1,6 @@
+from typing import Callable
+from typing import Union
+
 import numpy as np
 
 
@@ -37,23 +40,23 @@ class ComposedTransform(Transform):
         self.transforms = transforms
 
     def forward(self, x: np.ndarray) -> np.ndarray:
-        u = x
-        for transform in transforms:
+        u = x.copy()
+        for transform in self.transforms:
             u = transform(u)
         return u
 
     def inverse(self, u: np.ndarray) -> np.ndarray:
-        x = u
-        for transform in reversed(transforms):
+        x = u.copy()
+        for transform in reversed(self.transforms):
             x = transform.inverse(x)
         return x
 
 
-def forward(x, transforms, diagnostics):
-    predictions = []
+def forward(x: np.ndarray, transforms: list[Callable], diagnostics: list[list[Callable]]) -> list[list[np.ndarray]]:
+    values = []
     for index, transform in enumerate(transforms):
         u = transform(x)
-        predictions.append([diagnostic(u) for diagnostic in diagnostics[index]])
-    return predictions
+        values.append([diagnostic(u) for diagnostic in diagnostics[index]])
+    return values
 
 

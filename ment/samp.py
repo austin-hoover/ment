@@ -7,32 +7,27 @@ from typing import Tuple
 import numpy as np
 from tqdm import tqdm
 
+from .grid import coords_to_edges
+from .grid import edges_to_coords
+from .grid import get_grid_points
+
 
 def tqdm_wrapper(iterable, verbose=False):
     return tqdm(iterable) if verbose else iterable
     
 
-def get_grid_points(*grid_coords):
-    return np.stack([C.ravel() for C in np.meshgrid(*grid_coords, indexing="ij")], axis=-1)
-
-
-def sample_bins(values: np.ndarray, size: int, rng: np.random.Generator) -> np.ndarray:        
-    # pdf = np.ravel(values)
-    # idx = np.flatnonzero(pdf)
-    # pdf = pdf[idx]
-    # pdf = pdf / np.sum(pdf)
-    # idx = rng.choice(idx, size, replace=True, p=pdf)
-    idx = rng.choice(values.size, size, replace=True, p=(np.ravel(values) / np.sum(values)))
-    return idx
+def sample_bins(values: np.ndarray, size: int, rng: np.random.Generator) -> np.ndarray:
+    return rng.choice(values.size, size, replace=True, p=(np.ravel(values) / np.sum(values)))
     
 
 def sample_hist(
     values: np.ndarray, 
-    edges: List[np.ndarray], 
+    edges: list[np.ndarray], 
     size: int,
     rng: np.random.Generator,
     noise: float = 0.0, 
 ) -> np.ndarray:
+
     idx = sample_bins(values, size, rng=rng)
     idx = np.unravel_index(idx, shape=values.shape)
     
@@ -61,7 +56,6 @@ def sample_metropolis_hastings(prob_func: Callable, ndim: int, size: int, burnin
     xt = x0
     samples = []
     for i in tqdm(range(size + burnin)):
-        # xt_candidate = np.random.multivariate_normal(mean=xt, cov=(scale * np.eye(ndim)))
         xt_candidate = np.random.normal(scale=scale, loc=xt)
         accept_prob = prob_func(xt_candidate[None, :]) / prob_func(xt[None, :])
         if np.random.uniform(0.0, 1.0) < accept_prob:
@@ -88,17 +82,17 @@ class MetropolisHastingsSampler:
 class GridSampler:
     def __init__(
         self,
-        grid_limits: List[Tuple[float]],
-        grid_shape: Tuple[int],
+        grid_limits: list[tuple[float, float]],
+        grid_shape: tuple[int, ...],
         noise: float = 0.0,
-        store: bool = True,
+        store_grid_points: bool = True,
         seed: int = None
     ) -> None:
         self.grid_shape = grid_shape
         self.grid_limits = grid_limits
         self.ndim = len(grid_limits)
         self.noise = noise
-        self.store = store
+        self.store_grid_points = store_grid_points
         self.rng = np.random.default_rng(seed)
         
         self.grid_edges = [
@@ -109,18 +103,15 @@ class GridSampler:
             )
             for axis in range(self.ndim)
         ]
-        self.grid_coords = [0.5 * (e[:-1] + e[1:]) for e in self.grid_edges]
+        self.grid_coords = [edges_to_coords(e) for e in self.grid_edges]
         self.grid_points = None
 
     def get_grid_points(self) -> np.ndarray:
         if self.grid_points is not None:
             return self.grid_points
-            
-        grid_points = get_grid_points(*self.grid_coords)
-        
-        if self.store:
+        grid_points = get_grid_points(self.grid_coords)        
+        if self.store_grid_points:
             self.grid_points = grid_points
-            
         return grid_points
 
     def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
@@ -133,8 +124,8 @@ class GridSampler:
 class SliceGridSampler:
     def __init__(
         self,
-        grid_limits: List[Tuple[float]],
-        grid_shape: Tuple[int],
+        grid_limits: list[tuple[float, float]],
+        grid_shape: tuple[int, ...],
         proj_dim: int = 2,
         int_size: int = 10000,
         int_method: str = "grid",
@@ -167,14 +158,14 @@ class SliceGridSampler:
         self.proj_grid_shape = self.grid_shape[: self.proj_dim]
         self.proj_grid_edges = self.grid_edges[: self.proj_dim]
         self.proj_grid_coords = self.grid_coords[: self.proj_dim]
-        self.proj_grid_points = get_grid_points(*self.proj_grid_coords)
+        self.proj_grid_points = get_grid_points(self.proj_grid_coords)
 
         # Sampling grid.
         self.samp_axis = tuple(range(self.proj_dim, self.ndim))
         self.samp_grid_shape = self.grid_shape[self.proj_dim :]
         self.samp_grid_edges = self.grid_edges[self.proj_dim :]
         self.samp_grid_coords = self.grid_coords[self.proj_dim :]
-        self.samp_grid_points = get_grid_points(*self.samp_grid_coords)
+        self.samp_grid_points = get_grid_points(self.samp_grid_coords)
 
         # Integration limits (integration axis = sampling axis).
         self.int_size = int_size
@@ -188,7 +179,7 @@ class SliceGridSampler:
         # We will evaluate the function on the sampling grid. The first `proj_dim`
         # dimensions are the projected coordinates.
         self.eval_points = np.zeros((math.prod(self.samp_grid_shape), self.ndim))
-        self.eval_points[:, self.samp_axis] = get_grid_points(*self.samp_grid_coords)
+        self.eval_points[:, self.samp_axis] = get_grid_points(self.samp_grid_coords)
 
     def get_int_points(self) -> np.ndarray:
         int_points = None
@@ -200,7 +191,7 @@ class SliceGridSampler:
                 np.linspace(xmin, xmax, int_res)
                 for (xmin, xmax) in self.int_limits
             ]
-            int_points = get_grid_points(*int_coords)
+            int_points = get_grid_points(int_coords)
         elif self.int_method == "uniform":
             int_points = np.zeros((self.int_size, self.int_dim))
             for axis, (xmin, xmax) in zip(self.int_axis, self.int_limits):
