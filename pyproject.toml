@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 dependencies = [
     "matplotlib==3.8.4",
     "numpy<2.0.0",
-    "psdist @ git+https://github.com/austin-hoover/psdist@ffc52ed85fe759cbf5dac21000d88a370585e67b",
+    "psdist @ git+https://github.com/austin-hoover/psdist@3a9409d4821f836abee4a1e9c43d4519d9a37e1e",
     "scipy",
     "tqdm",
 ]
