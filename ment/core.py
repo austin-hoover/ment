@@ -1,5 +1,6 @@
 import math
 import time
+import pickle
 from typing import Any
 from typing import Callable
 from typing import Union
@@ -266,8 +267,39 @@ class MENT:
     def parameters(self):
         return
 
-    def save(self, path) -> None:
-        return 
+    def save(self, path: str) -> None:
+        state = {
+            "transforms": self.transforms,
+            "diagnostics": self.diagnostics,
+            "measurements": self.measurements,
+
+            "ndim": self.ndim,
+            "prior": self.prior,
+            "sampler": self.sampler,    
+
+            "epoch": self.epoch,
+            "lagrange_functions": self.lagrange_functions,
+        }
         
-    def load(self, path, device=None):
-        return 
+        file = open(path, "wb")
+        pickle.dump(state, file, pickle.HIGHEST_PROTOCOL)
+        file.close()
+        
+    def load(self, path: str) -> None:
+        file = open(path, "rb")
+        
+        state = pickle.load(file)
+        
+        self.transforms = state["transforms"]
+        self.diagnostics = state["diagnostics"]
+        self.measurements = state["measurements"]
+
+        self.ndim = state["ndim"]
+        self.prior = state["prior"]
+        self.sampler = state["sampler"]    
+
+        self.epoch = state["epoch"]
+        self.lagrange_functions = state["lagrange_functions"]
+        
+        file.close()
+
