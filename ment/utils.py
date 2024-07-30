@@ -1,17 +1,6 @@
-import itertools
-from tqdm import tqdm
-
-
-def wrap_tqdm(iterable, verbose=True):
-    return tqdm(iterable) if verbose else iterable
-
-
-def unravel(iterable):
-    return itertools.chain.from_iterable(iterable)
-
-
 """https://github.com/lollcat/fab-torch/blob/master/fab/utils/logging.py"""
 import abc
+import itertools
 import pathlib
 import pickle
 from typing import Any
@@ -22,6 +11,15 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
+
+
+def wrap_tqdm(iterable, verbose=True):
+    return tqdm(iterable) if verbose else iterable
+
+
+def unravel(iterable):
+    return itertools.chain.from_iterable(iterable)
 
 
 class Logger(abc.ABC):
