@@ -245,7 +245,7 @@ class MENT:
         values_pred = diagnostic.normalize(values_pred)
         return values_pred
 
-    def gauss_seidel_step(self, learning_rate: float = 1.0, **kws) -> None:
+    def gauss_seidel_step(self, learning_rate: float = 1.0, thresh: float = 0.0) -> None:
         for index, transform in enumerate(self.transforms):
             if self.verbose:
                 print(f"index={index}")
@@ -253,12 +253,18 @@ class MENT:
                 lagrange_function = self.lagrange_functions[index][diag_index]
                 values_meas = self.measurements[index][diag_index]
                 values_pred = self.simulate(index, diag_index)    
-                
+
+                values_pred[values_pred < thresh * values_pred.max()] = 0.0
+
                 shape = lagrange_function.values.shape
                 lagrange_function.values = np.ravel(lagrange_function.values)
                 for i, (val_meas, val_pred) in enumerate(zip(np.ravel(values_meas), np.ravel(values_pred))):
                     if (val_meas != 0.0) and (val_pred != 0.0):
-                        lagrange_function.values[i] *= 1.0 + learning_rate * ((val_meas / val_pred) - 1.0)
+                        ratio = val_meas / val_pred
+                        factor = 1.0 + learning_rate * (ratio - 1.0)
+                        h_old = lagrange_function.values[i]
+                        h_new = h_old * factor
+                        lagrange_function.values[i] = h_new
                 lagrange_function.values = np.reshape(lagrange_function.values, shape)
                 lagrange_function.set_values(lagrange_function.values)
                 self.lagrange_functions[index][diag_index] = lagrange_function
