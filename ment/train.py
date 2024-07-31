@@ -90,6 +90,7 @@ class Trainer:
         self, 
         epochs: int, 
         learning_rate: float = 0.99, 
+        thresh: float = 0.0,
         savefig_kws: Optional[dict] = None,
     ) -> None:
         """Perform Gauss-Seidel relaxation."""
@@ -107,7 +108,7 @@ class Trainer:
         for epoch in range(epochs + 1):
             if epoch > 0:
                 print("epoch = {}".format(epoch))
-                self.model.gauss_seidel_step(learning_rate=learning_rate)
+                self.model.gauss_seidel_step(learning_rate=learning_rate, thresh=thresh)
             
             # Log info.
             # (I think `eval_model` should return a dict with the data fit error and
