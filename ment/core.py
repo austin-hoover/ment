@@ -93,6 +93,16 @@ class MENT:
 
         self.epoch = 0
 
+    def set_interpolation_kws(self, **kws) -> None:
+        kws.setdefault("method", "linear")
+        kws.setdefault("bounds_error", False)
+        kws.setdefault("fill_value", 0.0)
+        
+        for i in range(len(self.lagrange_functions)):
+            for j in range(len(self.lagrange_functions[i])):
+                self.lagrange_functions[i][j].interp_kws = kws
+                self.lagrange_functions[i][j].set_values(self.lagrange_functions[i][j].values)
+
     def set_diagnostics(self, diagnostics: list[list[Any]]) -> list[list[Any]]:
         self.diagnostics = diagnostics
         if self.diagnostics is None:
@@ -130,8 +140,8 @@ class MENT:
                 prob *= lagrange_function(diagnostic.project(u))
         return prob * self.prior.prob(x)
 
-    def sample(self, size: int) -> np.ndarray:
-        return self.sampler(self.prob, size)
+    def sample(self, size: int, **kws) -> np.ndarray:
+        return self.sampler(self.prob, size, **kws)
 
     def get_measurement_points(self, index: int, diag_index: int) -> np.ndarray:
         diagnostic = self.diagnostics[index][diag_index]
