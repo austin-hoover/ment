@@ -10,6 +10,7 @@ from tqdm import tqdm
 from .grid import coords_to_edges
 from .grid import edges_to_coords
 from .grid import get_grid_points
+from .utils import wrap_tqdm
 
 
 def tqdm_wrapper(iterable, verbose=False):
@@ -51,11 +52,13 @@ def sample_hist_and_rebin(values: np.ndarray, size: int, rng: np.random.Generato
     return values_out
 
 
-def sample_metropolis_hastings(prob_func: Callable, ndim: int, size: int, burnin: int = 10_000, scale: float = 1.0) -> np.ndarray:        
+def sample_metropolis_hastings(
+    prob_func: Callable, ndim: int, size: int, burnin: int = 10_000, scale: float = 1.0, verbose: bool = False,
+) -> np.ndarray:
     x0 = np.zeros(ndim)
     xt = x0
     samples = []
-    for i in tqdm(range(size + burnin)):
+    for i in wrap_tqdm(range(size + burnin), verbose):
         xt_candidate = np.random.normal(scale=scale, loc=xt)
         accept_prob = prob_func(xt_candidate[None, :]) / prob_func(xt[None, :])
         if np.random.uniform(0.0, 1.0) < accept_prob:
@@ -66,14 +69,22 @@ def sample_metropolis_hastings(prob_func: Callable, ndim: int, size: int, burnin
 
 
 class MetropolisHastingsSampler:
-    def __init__(self, ndim: int, scale: float = 1.0, burnin: int = 10_000, shuffle: bool = False) -> None:
+    def __init__(self, ndim: int, scale: float = 1.0, burnin: int = 10_000, shuffle: bool = False, verbose: bool = False) -> None:
         self.ndim = ndim
         self.scale = scale
         self.burnin = burnin
         self.shuffle = shuffle
+        self.verbose = verbose
 
     def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
-        x = sample_metropolis_hastings(prob_func, ndim=self.ndim, size=size, burnin=self.burnin, scale=self.scale)    
+        x = sample_metropolis_hastings(
+            prob_func, 
+            ndim=self.ndim, 
+            size=size, 
+            burnin=self.burnin, 
+            scale=self.scale, 
+            verbose=self.verbose
+        )    
         if self.shuffle:
             np.random.shuffle(x)
         return x
