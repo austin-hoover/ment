@@ -63,6 +63,7 @@ class MENT:
         integration_limits: list[tuple[float, float]] = None,
         integration_size: int = None,
         integration_batches: int = None,
+        store_integration_points: bool = True,
         interpolation_kws: dict = None,
         verbose: Union[bool, int] = True,
         mode: str = "sample",
@@ -90,6 +91,8 @@ class MENT:
         self.integration_limits = integration_limits
         self.integration_size = integration_size
         self.integration_batches = integration_batches
+        self.integration_points = None
+        self.store_integration_points = store_integration_points
 
         self.epoch = 0
 
@@ -148,6 +151,9 @@ class MENT:
         return diagnostic.get_grid_points()
 
     def get_integration_points(self, index: int, diag_index: int, method: str = "grid") -> np.ndarray:
+        if self.integration_points is not None:
+            return self.integration_points
+            
         measurement = self.measurements[index][diag_index]
         diagnostic = self.diagnostics[index][diag_index]
 
@@ -177,8 +183,9 @@ class MENT:
                 integration_points = get_grid_points(integration_grid_coords)
         else:
             raise NotImplementedError
-            
-        return integration_points
+
+        self.integration_points = integration_points
+        return self.integration_points
     
     def simulate(self, index: int, diag_index: int) -> np.ndarray:
         transform = self.transforms[index]
@@ -187,8 +194,7 @@ class MENT:
         values_pred = np.zeros(values_meas.shape)          
 
         if self.mode == "sample":
-            x = self.sample(self.n_samples)
-            return diagnostic(transform(x))
+            return diagnostic(transform(self.sample(self.n_samples)))
 
         measurement_axis = diagnostic.axis
         if type(measurement_axis) is int:
@@ -248,7 +254,6 @@ class MENT:
                     prob = self.prob(transform.inverse(u))
                     prob = np.array(np.split(prob, values_meas.size))
                     values_pred += np.reshape(np.sum(prob, axis=1), values_meas.shape)  # error?
-
         else:
             raise ValueError
                     
