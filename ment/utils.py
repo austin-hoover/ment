@@ -19,7 +19,7 @@ def wrap_tqdm(iterable, verbose=True):
 
 
 def unravel(iterable):
-    return itertools.chain.from_iterable(iterable)
+    return list(itertools.chain.from_iterable(iterable))
 
 
 class Logger(abc.ABC):
