@@ -53,7 +53,12 @@ def sample_hist_and_rebin(values: np.ndarray, size: int, rng: np.random.Generato
 
 
 def sample_metropolis_hastings(
-    prob_func: Callable, ndim: int, size: int, burnin: int = 10_000, scale: float = 1.0, verbose: bool = False,
+    prob_func: Callable, 
+    ndim: int, 
+    size: int, 
+    burnin: int = 10_000,
+    scale: float = 1.0, 
+    verbose: bool = False,
 ) -> np.ndarray:
     x0 = np.zeros(ndim)
     xt = x0
@@ -68,8 +73,68 @@ def sample_metropolis_hastings(
     return samples
 
 
+def sample_metropolis_hastings_parallel(
+    prob_func: Callable, 
+    ndim: int, 
+    size: int,
+    scale: float = 1.0,
+    chains: int = 1,
+    burnin: int = 10_000,
+    start: np.ndarray = None,
+    pad: float = 1.00e-14,
+    merge: bool = True,
+    verbose: bool = False,
+):
+    """Vectorized Metropolis-Hastings.
+
+    https://colindcarroll.com/2019/08/18/very-parallel-mcmc-sampling/
+    """
+    size = size + burnin
+    print(size, size - burnin)
+    
+    proposal_cov = np.eye(ndim) * scale**2
+
+    if start is None:
+        start = np.zeros(ndim)
+
+    # Initialize with a single point, or an array of shape (chains, ndim)
+    if start.shape == (ndim,):
+        start = np.tile(start, (chains, 1))
+
+    samples = np.empty((size, chains, ndim))
+    samples[0] = start
+    current_log_prob = np.log(prob_func(start) + pad)
+
+    proposals = np.random.multivariate_normal(np.zeros(ndim), proposal_cov, size=(size - 1, chains))
+    log_unifs = np.log(np.random.rand(size - 1, chains))        
+    
+    for i, (sample, log_unif) in enumerate(wrap_tqdm(zip(proposals, log_unifs), verbose), start=1):
+        proposal = sample + samples[i - 1]
+        proposal_log_prob = np.log(prob_func(proposal) + pad)
+        accept = (log_unif < proposal_log_prob - current_log_prob)
+
+        # copy previous row, update accepted indexes
+        samples[i] = samples[i - 1]
+        samples[i][accept] = proposal[accept]
+
+        # update log probability
+        current_log_prob[accept] = proposal_log_prob[accept]
+
+    samples = samples[burnin:]
+    if merge and (samples.ndim == 3):
+        samples = samples.reshape(samples.shape[0] * samples.shape[1], samples.shape[2])
+    return samples
+    
+
 class MetropolisHastingsSampler:
-    def __init__(self, ndim: int, scale: float = 1.0, burnin: int = 10_000, shuffle: bool = False, verbose: bool = False) -> None:
+    def __init__(
+        self, 
+        ndim: int, 
+        scale: float = 1.0, 
+        burnin: int = 10_000, 
+        shuffle: bool = False, 
+        verbose: bool = False,
+    ) -> None:
         self.ndim = ndim
         self.scale = scale
         self.burnin = burnin
@@ -85,6 +150,43 @@ class MetropolisHastingsSampler:
             scale=self.scale, 
             verbose=self.verbose
         )    
+        if self.shuffle:
+            np.random.shuffle(x)
+        return x
+
+
+class MetropolisHastingsSamplerParallel:
+    def __init__(
+        self, 
+        ndim: int, 
+        scale: float = 1.0, 
+        chains: int = 1,
+        burnin: int = 10_000, 
+        shuffle: bool = False,
+        start: np.ndarray = None,
+        verbose: bool = False,
+    ) -> None:
+        self.ndim = ndim
+        self.scale = scale
+        self.chains = chains
+        self.burnin = burnin
+        self.shuffle = shuffle
+        self.start = start
+        self.verbose = verbose
+
+    def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
+        size = size // self.chains
+        x = sample_metropolis_hastings_parallel(
+            prob_func, 
+            ndim=self.ndim, 
+            size=size, 
+            chains=self.chains,
+            burnin=self.burnin,
+            scale=self.scale, 
+            start=self.start,
+            merge=True,
+            verbose=self.verbose
+        )  
         if self.shuffle:
             np.random.shuffle(x)
         return x
