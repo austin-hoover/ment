@@ -136,13 +136,18 @@ class MENT:
         return self.lagrange_functions
 
     def prob(self, x: np.ndarray) -> np.ndarray:
+        if x.ndim == 1:
+            x = x[None, :]
+            
         prob = np.ones(x.shape[0])
         for index, transform in enumerate(self.transforms):
             u = transform(x)
             for diagnostic, lagrange_function in zip(self.diagnostics[index], self.lagrange_functions[index]):
                 prob *= lagrange_function(diagnostic.project(u))
-        return prob * self.prior.prob(x)
-
+        prob = prob * self.prior.prob(x)
+        prob = np.squeeze(prob)
+        return prob
+        
     def sample(self, size: int, **kws) -> np.ndarray:
         return self.sampler(self.prob, size, **kws)
 
