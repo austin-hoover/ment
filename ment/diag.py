@@ -18,6 +18,9 @@ class Histogram1D:
         self.kde = kde
         self.kde_bandwidth = kde_bandwidth * self.bin_size
 
+    def get_grid_points(self) -> np.ndarray:
+        return self.coords
+
     def normalize(self, values: np.ndarray) -> np.ndarray:
         return values / np.sum(values) / (self.edges[1] - self.edges[0])
         
@@ -54,6 +57,9 @@ class Histogram2D:
         self.bin_sizes = [abs(c[1] - c[0]) for c in self.coords]
         self.kde = kde
         self.kde_bandwidth = kde_bandwidth * np.mean(self.bin_sizes)
+
+    def get_grid_points(self) -> np.ndarray:
+        return self.grid_points
 
     def normalize(self, values: np.ndarray) -> np.ndarray:
         return values / np.sum(values) / np.prod(self.bin_sizes)
