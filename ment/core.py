@@ -135,7 +135,7 @@ class MENT:
                 self.lagrange_functions[-1].append(lagrange_function)
         return self.lagrange_functions
 
-    def prob(self, x: np.ndarray) -> np.ndarray:
+    def prob(self, x: np.ndarray, squeeze: bool = True) -> np.ndarray:
         if x.ndim == 1:
             x = x[None, :]
             
@@ -145,11 +145,15 @@ class MENT:
             for diagnostic, lagrange_function in zip(self.diagnostics[index], self.lagrange_functions[index]):
                 prob *= lagrange_function(diagnostic.project(u))
         prob = prob * self.prior.prob(x)
-        prob = np.squeeze(prob)
+        if squeeze:
+            prob = np.squeeze(prob)
         return prob
         
     def sample(self, size: int, **kws) -> np.ndarray:
-        return self.sampler(self.prob, size, **kws)
+        def prob_func(x):
+            return self.prob(x, squeeze=False)
+            
+        return self.sampler(prob_func, size, **kws)
 
     def get_measurement_points(self, index: int, diag_index: int) -> np.ndarray:
         diagnostic = self.diagnostics[index][diag_index]
