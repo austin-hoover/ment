@@ -76,9 +76,7 @@ def sample_metropolis_hastings(
     proposal_mean = np.zeros(ndim)
 
     if start is None:
-        ub = 2.0 * np.sqrt(np.diagonal(proposal_cov))
-        lb = -ub
-        start = np.random.uniform(lb, ub, size=(chains, ndim))
+        start = np.random.multivariate_normal(proposal_mean, proposal_cov, size=chains)
 
     size += burnin
 
@@ -101,9 +99,7 @@ def sample_metropolis_hastings(
 
     points = points[burnin:]
     if merge:
-        shape = points.shape
-        shape = (shape[0] * shape[1], shape[2])
-        points = points.reshape(shape)
+        points = points.reshape(points.shape[0] * points.shape[1], points.shape[2])
     return points
 
 
