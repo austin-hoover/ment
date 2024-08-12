@@ -22,6 +22,17 @@ class Transform:
         raise NotImplementedError
 
 
+class IdentityTransform(Transform):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, x: np.ndarray) -> np.ndarray:
+        return x
+
+    def inverse(self, x: np.ndarray) -> np.ndarray:
+        return x
+
+
 class LinearTransform(Transform):
     def __init__(self, matrix: np.ndarray) -> None:
         super().__init__()
