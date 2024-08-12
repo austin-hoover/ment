@@ -121,11 +121,8 @@ class MENT:
         if self.prior is None:
             self.prior = UniformPrior(ndim, scale=100.0)
 
-        self.unnorm_transform = None
-        if unnorm_matrix is None:
-            self.unnorm_transform = IdentityTransform()            
-        else:
-            self.unnorm_transform = LinearTransform(unnorm_matrix)
+        self.unnorm_matrix = unnorm_matrix
+        self.unnorm_transform = self.set_unnorm_transform(unnorm_matrix)
 
         if interpolation_kws is None:
             interpolation_kws = dict()
@@ -141,6 +138,15 @@ class MENT:
         self.store_integration_points = store_integration_points
 
         self.epoch = 0
+
+    def set_unnorm_transform(self, unnorm_matrix: np.ndarray) -> Callable:
+        self.unnorm_matrix = unnorm_matrix
+        if self.unnorm_matrix is None:
+            self.unnorm_transform = IdentityTransform()
+            self.unnorm_matrix = np.eye(self.ndim)
+        else:
+            self.unnorm_transform = LinearTransform(self.unnorm_matrix)
+        return self.unnorm_transform
 
     def set_interpolation_kws(self, **kws) -> None:
         kws.setdefault("method", "linear")
@@ -370,7 +376,7 @@ class MENT:
             "ndim": self.ndim,
             "prior": self.prior,
             "sampler": self.sampler,    
-            "unnorm_transform": self.unnorm_transform,
+            "unnorm_matrix": self.unnorm_matrix,
 
             "epoch": self.epoch,
             "lagrange_functions": self.lagrange_functions,
@@ -392,9 +398,11 @@ class MENT:
         self.ndim = state["ndim"]
         self.prior = state["prior"]
         self.sampler = state["sampler"]    
+        self.unnorm_matrix = state["unnorm_matrix"]
+        self.unnorm_transform = self.set_unnorm_transform(self.unnorm_matrix)
 
         self.epoch = state["epoch"]
         self.lagrange_functions = state["lagrange_functions"]
-        
+
         file.close()
 
