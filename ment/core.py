@@ -16,6 +16,8 @@ from .prior import UniformPrior
 from .grid import coords_to_edges
 from .grid import edges_to_coords
 from .grid import get_grid_points
+from .sim import IdentityTransform
+from .sim import LinearTransform
 from .utils import wrap_tqdm
 
 
@@ -51,6 +53,31 @@ class LagrangeFunction:
 
 
 class MENT:
+    """Maximum Entropy Tomography (MENT) model.
+
+    MENT reconstructs the distribution in normalized coordinates z. The normalized
+    coordinates are related to the real coordinates by a linear transformation
+    x = Vz. To generate samples from the real distribution, call `unnormalize`:
+    
+    ```
+    model = MENT(...)
+    z = model.sample(100_000)
+    x = model.unnormalize(z)
+    ```
+
+    Similarly, to compute the probability density at x:
+
+    ```
+    prob = model.prob(model.normalize(x))
+    ```
+
+    There is no need to do this if V = I = identity matrix.
+    
+
+    Attributes
+    ----------
+    ...
+    """
     def __init__(
         self, 
         ndim: int,
@@ -59,6 +86,7 @@ class MENT:
         measurements: list[list[np.ndarray]],
         prior: Any,
         sampler: Callable,
+        unnorm_matrix: np.ndarray = None,
         n_samples: int = 1_000_000, 
         integration_limits: list[tuple[float, float]] = None,
         integration_size: int = None,
@@ -68,7 +96,19 @@ class MENT:
         verbose: Union[bool, int] = True,
         mode: str = "sample",
     ) -> None:
+        """Constructor.
+
+        Parameters
+        ----------
+        ...
         
+        sampler: Callable
+            Calling `sampler(f, n)` generates n samples from the function f.
+        prior: Any
+            Prior distribution for relative entropy calculations. Must implement `prob(z)`.
+            The prior is defined in normalized space.
+        ...
+        """
         self.ndim = ndim
         self.verbose = int(verbose)
         self.mode = mode
@@ -80,6 +120,12 @@ class MENT:
         self.prior = prior
         if self.prior is None:
             self.prior = UniformPrior(ndim, scale=100.0)
+
+        self.unnorm_transform = None
+        if unnorm_matrix is None:
+            self.unnorm_transform = IdentityTransform()            
+        else:
+            self.unnorm_transform = LinearTransform(unnorm_matrix)
 
         if interpolation_kws is None:
             interpolation_kws = dict()
@@ -135,26 +181,43 @@ class MENT:
                 self.lagrange_functions[-1].append(lagrange_function)
         return self.lagrange_functions
 
-    def prob(self, x: np.ndarray, squeeze: bool = True) -> np.ndarray:
-        if x.ndim == 1:
-            x = x[None, :]
+    def unnormalize(self, z: np.ndarray) -> np.ndarray:
+        return self.unnorm_transform(z)
+
+    def normalize(self, x: np.ndarray) -> np.ndarray:
+        return self.unnorm_transform.inverse(x)
+
+    def prob(self, z: np.ndarray, squeeze: bool = True) -> np.ndarray:
+        if z.ndim == 1:
+            z = z[None, :]
+        x = self.unnormalize(z)
             
-        prob = np.ones(x.shape[0])
+        prob = np.ones(z.shape[0])
         for index, transform in enumerate(self.transforms):
             u = transform(x)
             for diagnostic, lagrange_function in zip(self.diagnostics[index], self.lagrange_functions[index]):
                 prob *= lagrange_function(diagnostic.project(u))
-        prob = prob * self.prior.prob(x)
+        prob *= self.prior.prob(z)
+        
         if squeeze:
             prob = np.squeeze(prob)
         return prob
         
     def sample(self, size: int, **kws) -> np.ndarray:
-        def prob_func(x):
-            return self.prob(x, squeeze=False)
-            
-        return self.sampler(prob_func, size, **kws)
+        
+        def prob_func(z: np.ndarray) -> np.ndarray:
+            return self.prob(z, squeeze=False)
 
+        z = self.sampler(prob_func, size, **kws)
+        return z
+
+    def estimate_entropy(self, batch_size: float) -> float:
+        z = self.sample(batch_size)
+        log_p = np.log(self.prob(z) + 1.00e-15)
+        log_q = np.log(self.prior.prob(z) + 1.00e-15)
+        entropy = -np.mean(log_p - log_q)
+        return entropy
+    
     def get_measurement_points(self, index: int, diag_index: int) -> np.ndarray:
         diagnostic = self.diagnostics[index][diag_index]
         return diagnostic.get_grid_points()
@@ -199,11 +262,12 @@ class MENT:
     def simulate(self, index: int, diag_index: int) -> np.ndarray:
         transform = self.transforms[index]
         diagnostic = self.diagnostics[index][diag_index]
-        values_meas = self.measurements[index][diag_index]
-        values_pred = np.zeros(values_meas.shape)          
 
         if self.mode == "sample":
-            return diagnostic(transform(self.sample(self.n_samples)))
+            return diagnostic(transform(self.unnormalize(self.sample(self.n_samples))))
+
+        values_meas = self.measurements[index][diag_index]
+        values_pred = np.zeros(values_meas.shape)          
 
         measurement_axis = diagnostic.axis
         if type(measurement_axis) is int:
@@ -233,7 +297,8 @@ class MENT:
                         u[:, axis] = point
                     else:
                         u[:, axis] = point[k]
-                prob = self.prob(transform.inverse(u))  # symplectic
+
+                prob = self.prob(self.normalize(transform.inverse(u)))  # symplectic
                 values_pred[i] = np.sum(prob)
     
             if values_meas.ndim > 1:
@@ -251,7 +316,7 @@ class MENT:
                     lb = integration_limits[0]
                     ub = integration_limits[1]
                     u[:, integration_axis] = np.random.uniform(lb, ub, size=(u.shape[0], integration_ndim))
-                    prob = self.prob(transform.inverse(u))
+                    prob = self.prob(self.normalize(transform.inverse(u)))
                     prob = np.array(np.split(prob, values_meas.size))
                     values_pred += np.sum(prob, axis=1)
             else:
@@ -260,7 +325,7 @@ class MENT:
                     lb = [xmin for (xmin, xmax) in integration_limits]
                     ub = [xmax for (xmin, xmax) in integration_limits]
                     u[:, integration_axis] = np.random.uniform(lb, ub, size=(u.shape[0], integration_ndim))
-                    prob = self.prob(transform.inverse(u))
+                    prob = self.prob(self.normalize(transform.inverse(u)))
                     prob = np.array(np.split(prob, values_meas.size))
                     values_pred += np.reshape(np.sum(prob, axis=1), values_meas.shape)  # error?
         else:
@@ -273,6 +338,7 @@ class MENT:
         for index, transform in enumerate(self.transforms):
             if self.verbose:
                 print(f"index={index}")
+                
             for diag_index, diagnostic in enumerate(self.diagnostics[index]):
                 lagrange_function = self.lagrange_functions[index][diag_index]
                 values_meas = self.measurements[index][diag_index]
@@ -284,10 +350,8 @@ class MENT:
                 lagrange_function.values = np.ravel(lagrange_function.values)
                 for i, (val_meas, val_pred) in enumerate(zip(np.ravel(values_meas), np.ravel(values_pred))):
                     if (val_meas != 0.0) and (val_pred != 0.0):
-                        ratio = val_meas / val_pred
-                        factor = 1.0 + learning_rate * (ratio - 1.0)
                         h_old = lagrange_function.values[i]
-                        h_new = h_old * factor
+                        h_new = h_old * (1.0 + learning_rate * ((val_meas / val_pred) - 1.0))
                         lagrange_function.values[i] = h_new
                 lagrange_function.values = np.reshape(lagrange_function.values, shape)
                 lagrange_function.set_values(lagrange_function.values)
@@ -306,6 +370,7 @@ class MENT:
             "ndim": self.ndim,
             "prior": self.prior,
             "sampler": self.sampler,    
+            "unnorm_transform": self.unnorm_transform,
 
             "epoch": self.epoch,
             "lagrange_functions": self.lagrange_functions,
