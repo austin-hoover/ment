@@ -23,14 +23,14 @@ from .utils import wrap_tqdm
 
 class LagrangeFunction:
     def __init__(
-        self, 
-        ndim: int, 
+        self,
+        ndim: int,
         coords: list[np.array],
-        values: np.array, 
+        values: np.array,
         **interp_kws,
     ) -> None:
         self.ndim = ndim
-        
+
         self.interp_kws = interp_kws
         self.interp_kws.setdefault("method", "linear")
         self.interp_kws.setdefault("bounds_error", False)
@@ -45,7 +45,9 @@ class LagrangeFunction:
 
     def set_values(self, values: np.ndarray) -> None:
         self.values = values
-        self.interp = scipy.interpolate.RegularGridInterpolator(self.coords, self.values, **self.interp_kws)
+        self.interp = scipy.interpolate.RegularGridInterpolator(
+            self.coords, self.values, **self.interp_kws
+        )
         return self.values
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
@@ -58,7 +60,7 @@ class MENT:
     MENT reconstructs the distribution in normalized coordinates z. The normalized
     coordinates are related to the real coordinates by a linear transformation
     x = Vz. To generate samples from the real distribution, call `unnormalize`:
-    
+
     ```
     model = MENT(...)
     z = model.sample(100_000)
@@ -72,22 +74,23 @@ class MENT:
     ```
 
     There is no need to do this if V = I = identity matrix.
-    
+
 
     Attributes
     ----------
     ...
     """
+
     def __init__(
-        self, 
+        self,
         ndim: int,
-        transforms: list[Callable], 
+        transforms: list[Callable],
         diagnostics: list[list[Any]],
         projections: list[list[np.ndarray]],
         prior: Any,
         sampler: Callable,
         unnorm_matrix: np.ndarray = None,
-        nsamp: int = 1_000_000, 
+        nsamp: int = 1_000_000,
         integration_limits: list[tuple[float, float]] = None,
         integration_size: int = None,
         integration_batches: int = None,
@@ -101,7 +104,7 @@ class MENT:
         Parameters
         ----------
         ...
-        
+
         sampler: Callable
             Calling `sampler(f, n)` generates n samples from the function f.
         prior: Any
@@ -127,7 +130,7 @@ class MENT:
         if interpolation_kws is None:
             interpolation_kws = dict()
         self.lagrange_functions = self.init_lagrange_functions(**interpolation_kws)
-        
+
         self.sampler = sampler
         self.nsamp = int(nsamp)
 
@@ -152,7 +155,7 @@ class MENT:
         kws.setdefault("method", "linear")
         kws.setdefault("bounds_error", False)
         kws.setdefault("fill_value", 0.0)
-        
+
         for i in range(len(self.lagrange_functions)):
             for j in range(len(self.lagrange_functions[i])):
                 self.lagrange_functions[i][j].interp_kws = kws
@@ -179,9 +182,9 @@ class MENT:
                 values = values.astype(float)
                 coords = diagnostic.coords
                 lagrange_function = LagrangeFunction(
-                    ndim=values.ndim, 
+                    ndim=values.ndim,
                     coords=coords,
-                    values=values, 
+                    values=values,
                     **interp_kws,
                 )
                 self.lagrange_functions[-1].append(lagrange_function)
@@ -197,20 +200,22 @@ class MENT:
         if z.ndim == 1:
             z = z[None, :]
         x = self.unnormalize(z)
-            
+
         prob = np.ones(z.shape[0])
         for index, transform in enumerate(self.transforms):
             u = transform(x)
-            for diagnostic, lagrange_function in zip(self.diagnostics[index], self.lagrange_functions[index]):
+            for diagnostic, lagrange_function in zip(
+                self.diagnostics[index], self.lagrange_functions[index]
+            ):
                 prob *= lagrange_function(diagnostic.project(u))
         prob *= self.prior.prob(z)
-        
+
         if squeeze:
             prob = np.squeeze(prob)
         return prob
-        
+
     def sample(self, size: int, **kws) -> np.ndarray:
-        
+
         def prob_func(z: np.ndarray) -> np.ndarray:
             return self.prob(z, squeeze=False)
 
@@ -223,22 +228,24 @@ class MENT:
         log_q = np.log(self.prior.prob(z) + 1.00e-15)
         entropy = -np.mean(log_p - log_q)
         return entropy
-    
+
     def get_projection_points(self, index: int, diag_index: int) -> np.ndarray:
         diagnostic = self.diagnostics[index][diag_index]
         return diagnostic.get_grid_points()
 
-    def get_integration_points(self, index: int, diag_index: int, method: str = "grid") -> np.ndarray:
+    def get_integration_points(
+        self, index: int, diag_index: int, method: str = "grid"
+    ) -> np.ndarray:
         if self.integration_points is not None:
             return self.integration_points
-            
+
         projection = self.projections[index][diag_index]
         diagnostic = self.diagnostics[index][diag_index]
 
         projection_axis = diagnostic.axis
         if type(projection_axis) is int:
             projection_axis = (projection_axis,)
-            
+
         integration_axis = tuple([axis for axis in range(self.ndim) if axis not in projection_axis])
         integration_ndim = len(integration_axis)
         integration_limits = self.integration_limits[index][diag_index]
@@ -247,12 +254,14 @@ class MENT:
 
         if (integration_ndim == 1) and (np.ndim(integration_limits) == 1):
             integration_limits = [integration_limits]
-        
+
         if method == "grid":
             integration_grid_resolution = int(integration_size ** (1.0 / integration_ndim))
             integration_grid_shape = tuple(integration_ndim * [integration_grid_resolution])
             integration_grid_coords = [
-                np.linspace(integration_limits[i][0], integration_limits[i][1], integration_grid_shape[i]) 
+                np.linspace(
+                    integration_limits[i][0], integration_limits[i][1], integration_grid_shape[i]
+                )
                 for i in range(integration_ndim)
             ]
             if integration_ndim == 1:
@@ -264,7 +273,7 @@ class MENT:
 
         self.integration_points = integration_points
         return self.integration_points
-    
+
     def simulate(self, index: int, diag_index: int) -> np.ndarray:
         transform = self.transforms[index]
         diagnostic = self.diagnostics[index][diag_index]
@@ -273,7 +282,7 @@ class MENT:
             return diagnostic(transform(self.unnormalize(self.sample(self.nsamp))))
 
         values_meas = self.projections[index][diag_index]
-        values_pred = np.zeros(values_meas.shape)          
+        values_pred = np.zeros(values_meas.shape)
 
         projection_axis = diagnostic.axis
         if type(projection_axis) is int:
@@ -284,19 +293,19 @@ class MENT:
         integration_axis = tuple(integration_axis)
         integration_ndim = len(integration_axis)
         integration_limits = self.integration_limits[index][diag_index]
-        
+
         projection_points = self.get_projection_points(index, diag_index)
         integration_points = self.get_integration_points(index, diag_index)
 
-        if self.mode == "integrate":         
+        if self.mode == "integrate":
             u = np.zeros((integration_points.shape[0], self.ndim))
             for k, axis in enumerate(integration_axis):
                 if integration_ndim == 1:
                     u[:, axis] = integration_points
                 else:
                     u[:, axis] = integration_points[:, k]
-    
-            values_pred = np.zeros(projection_points.shape[0])            
+
+            values_pred = np.zeros(projection_points.shape[0])
             for i, point in enumerate(wrap_tqdm(projection_points, self.verbose > 1)):
                 for k, axis in enumerate(projection_axis):
                     if values_meas.ndim == 1:
@@ -306,22 +315,24 @@ class MENT:
 
                 prob = self.prob(self.normalize(transform.inverse(u)))  # symplectic
                 values_pred[i] = np.sum(prob)
-    
+
             if values_meas.ndim > 1:
                 values_pred = np.reshape(values_pred, values_meas.shape)
-    
-        elif self.mode == "integrate_batched":    
+
+        elif self.mode == "integrate_batched":
             # Experimental batched version...
             integration_batch_size = int(self.integration_size / self.integration_batches)
             u = np.zeros((integration_batch_size * values_meas.size, self.ndim))
-            
+
             if projection_ndim == 1:
                 projection_axis = projection_axis[0]
                 u[:, projection_axis] = np.repeat(projection_points, integration_batch_size)
                 for _ in range(self.integration_batches):
                     lb = integration_limits[0]
                     ub = integration_limits[1]
-                    u[:, integration_axis] = np.random.uniform(lb, ub, size=(u.shape[0], integration_ndim))
+                    u[:, integration_axis] = np.random.uniform(
+                        lb, ub, size=(u.shape[0], integration_ndim)
+                    )
                     prob = self.prob(self.normalize(transform.inverse(u)))
                     prob = np.array(np.split(prob, values_meas.size))
                     values_pred += np.sum(prob, axis=1)
@@ -330,13 +341,15 @@ class MENT:
                 for _ in range(self.integration_batches):
                     lb = [xmin for (xmin, xmax) in integration_limits]
                     ub = [xmax for (xmin, xmax) in integration_limits]
-                    u[:, integration_axis] = np.random.uniform(lb, ub, size=(u.shape[0], integration_ndim))
+                    u[:, integration_axis] = np.random.uniform(
+                        lb, ub, size=(u.shape[0], integration_ndim)
+                    )
                     prob = self.prob(self.normalize(transform.inverse(u)))
                     prob = np.array(np.split(prob, values_meas.size))
                     values_pred += np.reshape(np.sum(prob, axis=1), values_meas.shape)  # error?
         else:
             raise ValueError
-                    
+
         values_pred = diagnostic.normalize(values_pred)
         return values_pred
 
@@ -344,17 +357,19 @@ class MENT:
         for index, transform in enumerate(self.transforms):
             if self.verbose:
                 print(f"index={index}")
-                
+
             for diag_index, diagnostic in enumerate(self.diagnostics[index]):
                 lagrange_function = self.lagrange_functions[index][diag_index]
                 values_meas = self.projections[index][diag_index]
-                values_pred = self.simulate(index, diag_index)    
+                values_pred = self.simulate(index, diag_index)
 
                 values_pred[values_pred < thresh * values_pred.max()] = 0.0
 
                 shape = lagrange_function.values.shape
                 lagrange_function.values = np.ravel(lagrange_function.values)
-                for i, (val_meas, val_pred) in enumerate(zip(np.ravel(values_meas), np.ravel(values_pred))):
+                for i, (val_meas, val_pred) in enumerate(
+                    zip(np.ravel(values_meas), np.ravel(values_pred))
+                ):
                     if (val_meas != 0.0) and (val_pred != 0.0):
                         h_old = lagrange_function.values[i]
                         h_new = h_old * (1.0 + learning_rate * ((val_meas / val_pred) - 1.0))
@@ -372,32 +387,30 @@ class MENT:
             "transforms": self.transforms,
             "diagnostics": self.diagnostics,
             "projections": self.projections,
-
             "ndim": self.ndim,
             "prior": self.prior,
-            "sampler": self.sampler,    
+            "sampler": self.sampler,
             "unnorm_matrix": self.unnorm_matrix,
-
             "epoch": self.epoch,
             "lagrange_functions": self.lagrange_functions,
         }
-        
+
         file = open(path, "wb")
         pickle.dump(state, file, pickle.HIGHEST_PROTOCOL)
         file.close()
-        
+
     def load(self, path: str) -> None:
         file = open(path, "rb")
-        
+
         state = pickle.load(file)
-        
+
         self.transforms = state["transforms"]
         self.diagnostics = state["diagnostics"]
         self.projections = state["projections"]
 
         self.ndim = state["ndim"]
         self.prior = state["prior"]
-        self.sampler = state["sampler"]    
+        self.sampler = state["sampler"]
         self.unnorm_matrix = state["unnorm_matrix"]
         self.unnorm_transform = self.set_unnorm_transform(self.unnorm_matrix)
 
@@ -405,4 +418,3 @@ class MENT:
         self.lagrange_functions = state["lagrange_functions"]
 
         file.close()
-

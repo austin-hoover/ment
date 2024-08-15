@@ -28,17 +28,17 @@ def normalize(x):
 
 def shuffle(x, rng=None):
     return rng.permutation(x)
-    
+
 
 class Distribution:
     def __init__(
-        self, 
-        ndim: int = 2, 
-        seed: int = None, 
-        normalize: bool = False, 
-        shuffle: bool = True, 
+        self,
+        ndim: int = 2,
+        seed: int = None,
+        normalize: bool = False,
+        shuffle: bool = True,
         noise: bool = None,
-        decorr: bool = False, 
+        decorr: bool = False,
         transform: Callable = None,
     ):
         self.ndim = ndim
@@ -51,7 +51,7 @@ class Distribution:
 
     def prob(self, x: np.ndarray) -> np.ndarray:
         raise NotImplementedError
-    
+
     def sample(self, size: int) -> np.ndarray:
         x = self._sample(int(size))
         if self.shuffle:
@@ -68,7 +68,7 @@ class Distribution:
 
     def _sample(self, n: int) -> np.ndarray:
         raise NotImplementedError
-    
+
 
 class EightGaussians(Distribution):
     def __init__(self, **kws):
@@ -94,7 +94,7 @@ class Galaxy(Distribution):
             self.noise = 0.0
 
     def _sample(self, n):
-        
+
         def _rotate(X, theta):
             x = X[:, 0].copy()
             y = X[:, 1].copy()
@@ -109,10 +109,10 @@ class Galaxy(Distribution):
 
         # Apply amplitude-dependent phase advance.
         r = np.linalg.norm(X, axis=1)
-        r = r / np.max(r)        
-        theta = 2.0 * np.pi * (1.0 + 0.5 * (r **0.25))
+        r = r / np.max(r)
+        theta = 2.0 * np.pi * (1.0 + 0.5 * (r**0.25))
         for _ in range(self.turns):
-            X = _rotate(X, theta)     
+            X = _rotate(X, theta)
 
         # Standardize the data set.
         X = X / np.std(X, axis=0)
@@ -160,12 +160,12 @@ class Hollow(Distribution):
         x = self.rng.normal(size=(n, self.ndim))
         x /= np.linalg.norm(x, axis=1)[:, None]
         x /= np.std(x, axis=0)
-        
+
         r = self.rng.uniform(0.0, 1.0, size=n) ** (1.0 / (self.exp * self.ndim))
         x *= r[:, None]
         x /= np.std(x, axis=0)
         return x
-        
+
 
 class Pinwheel(Distribution):
     def __init__(self, **kws):
@@ -197,7 +197,7 @@ class Rings(Distribution):
         sizes = [n - (self.n_rings - 1) * n_outer] + (self.n_rings - 1) * [n_outer]
         radii = np.linspace(0.0, 1.0, self.n_rings + 1)
         radii = radii[1:]
-        
+
         x = []
         for size, radius in zip(sizes, radii):
             x_loc = self.rng.normal(size=(n, self.ndim))
@@ -207,7 +207,7 @@ class Rings(Distribution):
         x = np.vstack(x)
         x /= np.std(x, axis=0)
         return x
-        
+
 
 class SwissRoll(Distribution):
     def __init__(self, **kws):
@@ -231,7 +231,7 @@ class TwoSpirals(Distribution):
 
     def _sample(self, n):
         self.exp = 0.75
-        t = 3.0 * np.pi * np.random.uniform(0.0, 1.0, size=n) ** self.exp    
+        t = 3.0 * np.pi * np.random.uniform(0.0, 1.0, size=n) ** self.exp
         r = t / 2.0 / np.pi * np.sign(self.rng.normal(size=n))
         t = t + self.rng.normal(size=n, scale=np.linspace(0.0, 1.0, n))
         x = np.stack([-r * np.cos(t), r * np.sin(t)], axis=-1)
@@ -280,7 +280,6 @@ DISTRIBUTIONS = {
     "waterbag": WaterBag,
 }
 
+
 def get_dist(name, **kws):
     return DISTRIBUTIONS[name](**kws)
-
-

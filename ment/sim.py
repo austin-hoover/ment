@@ -4,14 +4,10 @@ from typing import Union
 import numpy as np
 
 
-def rotation_matrix(angle: float) -> np.ndarray:
-    return np.array([[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]])
-
-
 class Transform:
     def __init__(self) -> None:
         return
-        
+
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return self.forward(x)
 
@@ -63,11 +59,15 @@ class ComposedTransform(Transform):
         return x
 
 
-def forward(x: np.ndarray, transforms: list[Callable], diagnostics: list[list[Callable]]) -> list[list[np.ndarray]]:
-    values = []
+def rotation_matrix(angle: float) -> np.ndarray:
+    return np.array([[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]])
+
+
+def forward(
+    x: np.ndarray, transforms: list[Callable], diagnostics: list[list[Callable]]
+) -> list[list[np.ndarray]]:
+    projections = []
     for index, transform in enumerate(transforms):
         u = transform(x)
-        values.append([diagnostic(u) for diagnostic in diagnostics[index]])
-    return values
-
-
+        projections.append([diagnostic(u) for diagnostic in diagnostics[index]])
+    return projections

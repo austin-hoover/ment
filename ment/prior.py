@@ -5,7 +5,7 @@ import numpy as np
 class Prior:
     def __init__(self, **kws) -> None:
         return
-        
+
     def _prob(self, x: np.ndarray) -> np.ndarray:
         raise NotImplemented
 
@@ -18,20 +18,20 @@ class GaussianPrior(Prior):
         super().__init__(**kws)
         self.ndim = ndim
         self.scale = scale
-    
+
     def _prob(self, x: np.ndarray) -> np.ndarray:
         denom = np.sqrt((2.0 * np.pi) ** self.ndim) * np.sqrt(np.prod(self.scale))
         _prob = np.exp(-0.5 * np.sum(np.square(x / self.scale), axis=1))
         _prob = _prob / denom
         return _prob
-        
+
 
 class UniformPrior(Prior):
     def __init__(self, ndim: int = 2, scale: float = 10.0, **kws) -> None:
         super().__init__(**kws)
         self.scale = scale
         self.ndim = ndim
-        self.volume = scale ** ndim
+        self.volume = scale**ndim
 
     def _prob(self, x: np.ndarray) -> np.ndarray:
         _prob = np.ones(x.shape[0]) / self.volume

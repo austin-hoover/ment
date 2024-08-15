@@ -1,4 +1,5 @@
 """https://github.com/lollcat/fab-torch/blob/master/fab/utils/logging.py"""
+
 import abc
 import itertools
 import pathlib
@@ -37,7 +38,8 @@ class Logger(abc.ABC):
 
 class ListLogger(Logger):
     """Manually save the data to the class in a dict."""
-    def __init__(self,path: str = None, freq: int = 1):
+
+    def __init__(self, path: str = None, freq: int = 1):
         self.path = path
         if self.path:
             if not pathlib.Path(self.path).parent.exists():
