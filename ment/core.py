@@ -83,11 +83,11 @@ class MENT:
         ndim: int,
         transforms: list[Callable], 
         diagnostics: list[list[Any]],
-        measurements: list[list[np.ndarray]],
+        projections: list[list[np.ndarray]],
         prior: Any,
         sampler: Callable,
         unnorm_matrix: np.ndarray = None,
-        n_samples: int = 1_000_000, 
+        nsamp: int = 1_000_000, 
         integration_limits: list[tuple[float, float]] = None,
         integration_size: int = None,
         integration_batches: int = None,
@@ -115,7 +115,7 @@ class MENT:
 
         self.transforms = transforms
         self.diagnostics = self.set_diagnostics(diagnostics)
-        self.measurements = self.set_measurements(measurements)
+        self.projections = self.set_projections(projections)
 
         self.prior = prior
         if self.prior is None:
@@ -129,7 +129,7 @@ class MENT:
         self.lagrange_functions = self.init_lagrange_functions(**interpolation_kws)
         
         self.sampler = sampler
-        self.n_samples = int(n_samples)
+        self.nsamp = int(nsamp)
 
         self.integration_limits = integration_limits
         self.integration_size = integration_size
@@ -164,18 +164,18 @@ class MENT:
             self.diagnostics = [[]]
         return self.diagnostics
 
-    def set_measurements(self, measurements: list[list[np.ndarray]]) -> list[list[np.ndarray]]:
-        self.measurements = measurements
-        if self.measurements is None:
-            self.measurements = [[]]
-        return self.measurements
+    def set_projections(self, projections: list[list[np.ndarray]]) -> list[list[np.ndarray]]:
+        self.projections = projections
+        if self.projections is None:
+            self.projections = [[]]
+        return self.projections
 
     def init_lagrange_functions(self, **interp_kws) -> list[list[np.ndarray]]:
         self.lagrange_functions = []
-        for index in range(len(self.measurements)):
+        for index in range(len(self.projections)):
             self.lagrange_functions.append([])
-            for measurement, diagnostic in zip(self.measurements[index], self.diagnostics[index]):
-                values = measurement > 0.0
+            for projection, diagnostic in zip(self.projections[index], self.diagnostics[index]):
+                values = projection > 0.0
                 values = values.astype(float)
                 coords = diagnostic.coords
                 lagrange_function = LagrangeFunction(
@@ -217,14 +217,14 @@ class MENT:
         z = self.sampler(prob_func, size, **kws)
         return z
 
-    def estimate_entropy(self, batch_size: float) -> float:
-        z = self.sample(batch_size)
+    def estimate_entropy(self, nsamp: float) -> float:
+        z = self.sample(nsamp)
         log_p = np.log(self.prob(z) + 1.00e-15)
         log_q = np.log(self.prior.prob(z) + 1.00e-15)
         entropy = -np.mean(log_p - log_q)
         return entropy
     
-    def get_measurement_points(self, index: int, diag_index: int) -> np.ndarray:
+    def get_projection_points(self, index: int, diag_index: int) -> np.ndarray:
         diagnostic = self.diagnostics[index][diag_index]
         return diagnostic.get_grid_points()
 
@@ -232,14 +232,14 @@ class MENT:
         if self.integration_points is not None:
             return self.integration_points
             
-        measurement = self.measurements[index][diag_index]
+        projection = self.projections[index][diag_index]
         diagnostic = self.diagnostics[index][diag_index]
 
-        measurement_axis = diagnostic.axis
-        if type(measurement_axis) is int:
-            measurement_axis = (measurement_axis,)
+        projection_axis = diagnostic.axis
+        if type(projection_axis) is int:
+            projection_axis = (projection_axis,)
             
-        integration_axis = tuple([axis for axis in range(self.ndim) if axis not in measurement_axis])
+        integration_axis = tuple([axis for axis in range(self.ndim) if axis not in projection_axis])
         integration_ndim = len(integration_axis)
         integration_limits = self.integration_limits[index][diag_index]
         integration_size = self.integration_size
@@ -270,22 +270,22 @@ class MENT:
         diagnostic = self.diagnostics[index][diag_index]
 
         if self.mode == "sample":
-            return diagnostic(transform(self.unnormalize(self.sample(self.n_samples))))
+            return diagnostic(transform(self.unnormalize(self.sample(self.nsamp))))
 
-        values_meas = self.measurements[index][diag_index]
+        values_meas = self.projections[index][diag_index]
         values_pred = np.zeros(values_meas.shape)          
 
-        measurement_axis = diagnostic.axis
-        if type(measurement_axis) is int:
-            measurement_axis = (measurement_axis,)
-        measurement_ndim = len(measurement_axis)
+        projection_axis = diagnostic.axis
+        if type(projection_axis) is int:
+            projection_axis = (projection_axis,)
+        projection_ndim = len(projection_axis)
 
-        integration_axis = [axis for axis in range(self.ndim) if axis not in measurement_axis]
+        integration_axis = [axis for axis in range(self.ndim) if axis not in projection_axis]
         integration_axis = tuple(integration_axis)
         integration_ndim = len(integration_axis)
         integration_limits = self.integration_limits[index][diag_index]
         
-        measurement_points = self.get_measurement_points(index, diag_index)
+        projection_points = self.get_projection_points(index, diag_index)
         integration_points = self.get_integration_points(index, diag_index)
 
         if self.mode == "integrate":         
@@ -296,9 +296,9 @@ class MENT:
                 else:
                     u[:, axis] = integration_points[:, k]
     
-            values_pred = np.zeros(measurement_points.shape[0])            
-            for i, point in enumerate(wrap_tqdm(measurement_points, self.verbose > 1)):
-                for k, axis in enumerate(measurement_axis):
+            values_pred = np.zeros(projection_points.shape[0])            
+            for i, point in enumerate(wrap_tqdm(projection_points, self.verbose > 1)):
+                for k, axis in enumerate(projection_axis):
                     if values_meas.ndim == 1:
                         u[:, axis] = point
                     else:
@@ -315,9 +315,9 @@ class MENT:
             integration_batch_size = int(self.integration_size / self.integration_batches)
             u = np.zeros((integration_batch_size * values_meas.size, self.ndim))
             
-            if measurement_ndim == 1:
-                measurement_axis = measurement_axis[0]
-                u[:, measurement_axis] = np.repeat(measurement_points, integration_batch_size)
+            if projection_ndim == 1:
+                projection_axis = projection_axis[0]
+                u[:, projection_axis] = np.repeat(projection_points, integration_batch_size)
                 for _ in range(self.integration_batches):
                     lb = integration_limits[0]
                     ub = integration_limits[1]
@@ -326,7 +326,7 @@ class MENT:
                     prob = np.array(np.split(prob, values_meas.size))
                     values_pred += np.sum(prob, axis=1)
             else:
-                u[:, measurement_axis] = np.repeat(measurement_points, integration_batch_size, axis=0)
+                u[:, projection_axis] = np.repeat(projection_points, integration_batch_size, axis=0)
                 for _ in range(self.integration_batches):
                     lb = [xmin for (xmin, xmax) in integration_limits]
                     ub = [xmax for (xmin, xmax) in integration_limits]
@@ -347,7 +347,7 @@ class MENT:
                 
             for diag_index, diagnostic in enumerate(self.diagnostics[index]):
                 lagrange_function = self.lagrange_functions[index][diag_index]
-                values_meas = self.measurements[index][diag_index]
+                values_meas = self.projections[index][diag_index]
                 values_pred = self.simulate(index, diag_index)    
 
                 values_pred[values_pred < thresh * values_pred.max()] = 0.0
@@ -371,7 +371,7 @@ class MENT:
         state = {
             "transforms": self.transforms,
             "diagnostics": self.diagnostics,
-            "measurements": self.measurements,
+            "projections": self.projections,
 
             "ndim": self.ndim,
             "prior": self.prior,
@@ -393,7 +393,7 @@ class MENT:
         
         self.transforms = state["transforms"]
         self.diagnostics = state["diagnostics"]
-        self.measurements = state["measurements"]
+        self.projections = state["projections"]
 
         self.ndim = state["ndim"]
         self.prior = state["prior"]
