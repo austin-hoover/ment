@@ -5,6 +5,7 @@ import typing
 from typing import Any
 from typing import Callable
 from typing import Optional
+from pprint import pprint
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,8 +13,9 @@ import proplot as pplt
 from tqdm.notebook import tqdm as tqdm_nb
 from tqdm import tqdm
 
-from ment.core import MENT
-from ment.utils import ListLogger
+from ..core import MENT
+from ..utils import ListLogger
+from ..utils import unravel
 
 
 class Trainer:
@@ -86,17 +88,11 @@ class Trainer:
         if self.eval is not None:
             return self.eval(self.model)
 
-    def train(
-        self,
-        epochs: int,
-        learning_rate: float = 0.99,
-        thresh: float = 0.0,
-        savefig_kws: Optional[dict] = None,
-    ) -> None:
+    def train(self, epochs: int, savefig_kws: dict = None, **kws) -> None:
         """Run Gauss-Seidel relaxation algorithm."""
 
-        if not savefig_kws:
-            savefig_kws = dict()
+        if savefig_kws is None:
+            savefig_kws = {}
         savefig_kws.setdefault("dpi", 300)
 
         path = None
@@ -109,7 +105,7 @@ class Trainer:
         for epoch in range(epochs + 1):
             if epoch > 0:
                 print("epoch = {}".format(epoch))
-                self.model.gauss_seidel_step(learning_rate=learning_rate, thresh=thresh)
+                self.model.gauss_seidel_step(**kws)
 
             # Log info.
             # (I think `eval_model` should return a dict with the data fit error and
@@ -120,6 +116,10 @@ class Trainer:
             info["time"] = time.time() - start_time
             info["D_norm"] = None
             logger.write(info)
-
-            self.eval_model(epoch)
+            
             self.plot_model(epoch, **savefig_kws)
+
+            result = self.eval_model(epoch)
+            pprint(result)
+
+
