@@ -16,7 +16,7 @@ class Histogram1D:
         direction: np.ndarray = None,
         kde: bool = False,
         kde_bandwidth: float = 1.0,
-        blur: float = 0.0
+        blur: float = 0.0,
     ) -> None:
         self.axis = axis
         self.ndim = 1
@@ -47,9 +47,9 @@ class Histogram1D:
             return estimator(self.coords)
 
         hist, _ = np.histogram(y, self.edges, density=True)
-        
+
         if (not unfiltered) and self.blur:
-            hist = scipy.ndimage.gaussian_filter(hist, self.blur)    
+            hist = scipy.ndimage.gaussian_filter(hist, self.blur)
 
         return hist
 
@@ -73,7 +73,7 @@ class Histogram2D:
         self.kde = kde
         self.kde_bandwidth = kde_bandwidth * np.mean(self.bin_sizes)
         self.blur = blur
-    
+
     def get_grid_points(self) -> np.ndarray:
         return self.grid_points
 
@@ -93,7 +93,7 @@ class Histogram2D:
         hist, _ = np.histogramdd(y, self.edges, density=True)
 
         if (not unfiltered) and self.blur:
-            hist = scipy.ndimage.gaussian_filter(hist, self.blur)    
+            hist = scipy.ndimage.gaussian_filter(hist, self.blur)
 
         return hist
 

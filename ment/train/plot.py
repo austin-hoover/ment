@@ -20,6 +20,7 @@ from ..utils import unravel
 
 class Plotter:
     """Plots predicted distribution and projections."""
+
     def __init__(
         self,
         n_samples: int,
@@ -58,11 +59,15 @@ class Plotter:
         projections_true = model.projections
         projections_true = unravel(projections_true)
         projections_pred = forward_with_diag_update(
-            x_pred, model.transforms, model.diagnostics, kde=False, blur=False,
+            x_pred,
+            model.transforms,
+            model.diagnostics,
+            kde=False,
+            blur=False,
         )
         projections_pred = unravel(projections_pred)
         diagnostics = unravel(model.diagnostics)
-        
+
         figs = []
 
         # Plot samples.
@@ -82,17 +87,18 @@ class Plotter:
 
 class PlotProj1D:
     def __init__(
-        self, 
-        ncols: int = 7, 
+        self,
+        ncols: int = 7,
         ymin: float = None,
         ymax: float = None,
         xmin: float = None,
         xmax: float = None,
-        log: bool = False, 
-        fig_kws: dict = None, 
+        xlim_scale: float = None,
+        log: bool = False,
+        fig_kws: dict = None,
         plot_kws_pred: dict = None,
         plot_kws_true: dict = None,
-        **plot_kws
+        **plot_kws,
     ) -> None:
         self.ncols = ncols
         self.log = log
@@ -100,6 +106,7 @@ class PlotProj1D:
         self.xmax = xmax
         self.ymin = ymin
         self.ymax = ymax
+        self.xlim_scale = xlim_scale
 
         if self.log:
             if self.ymax is None:
@@ -109,7 +116,7 @@ class PlotProj1D:
         else:
             if self.ymax is None:
                 self.ymax = 1.25
-        
+
         self.plot_kws = plot_kws
 
         self.plot_kws_pred = plot_kws_pred
@@ -130,12 +137,14 @@ class PlotProj1D:
             self.plot_kws_pred[key] = val
             self.plot_kws_true[key] = val
 
-        self.fig_kws = fig_kws        
+        self.fig_kws = fig_kws
         if self.fig_kws is None:
             self.fig_kws = {}
+        self.fig_kws.setdefault("sharex", False)
+        self.fig_kws.setdefault("sharey", True)
 
     def __call__(
-        self, 
+        self,
         projections_pred: list[np.ndarray],
         projections_true: list[np.ndarray],
         coords: list[np.ndarray],
@@ -148,7 +157,7 @@ class PlotProj1D:
         self.fig_kws.setdefault("ncols", ncols)
         self.fig_kws.setdefault("nrows", nrows)
         self.fig_kws.setdefault("figsize", (1.50 * ncols, 1.25 * nrows))
-    
+
         fig, axs = pplt.subplots(**self.fig_kws)
 
         for i, (y_pred, y_true) in enumerate(zip(projections_pred, projections_true)):
@@ -158,14 +167,27 @@ class PlotProj1D:
             ax.format(ymin=self.ymin, ymax=self.ymax, xmin=self.xmin, xmax=self.xmax)
             if self.log:
                 ax.format(yscale="log", yformatter="log")
+
+        if self.xlim_scale is not None:
+            for ax in axs:
+                xlim = np.array(ax.get_xlim())
+                xlim = xlim * self.xlim_scale
+                ax.format(xlim=xlim)
         return (fig, axs)
 
 
 class PlotDistCorner:
-    def __init__(self, log: bool = False, fig_kws: dict = None, **plot_kws) -> None:
+    def __init__(
+        self,
+        log: bool = False,
+        fig_kws: dict = None,
+        diag_ymin: float = None,
+        diag_ymax: float = None,
+        **plot_kws,
+    ) -> None:
         self.log = log
 
-        self.fig_kws = fig_kws        
+        self.fig_kws = fig_kws
         if self.fig_kws is None:
             self.fig_kws = {}
 
@@ -174,15 +196,24 @@ class PlotDistCorner:
         self.plot_kws.setdefault("mask", False)
         self.plot_kws.setdefault("cmap", "viridis")
 
+        self.diag_ymin = diag_ymin
+        self.diag_ymax = diag_ymax
+
+        if self.log:
+            if self.diag_ymin is None:
+                self.diag_ymin = 1.00e-05
+            if self.diag_ymax is None:
+                self.diag_ymax = 5.0
+
         if self.log:
             self.plot_kws["norm"] = "log"
-        
+
     def __call__(self, X: np.ndarray) -> tuple:
         grid = psv.CornerGrid(X.shape[1], **self.fig_kws)
         grid.plot_points(X, **self.plot_kws)
 
+        grid.format_diag(ymax=self.diag_ymax, ymin=self.diag_ymin)
         if self.log:
-            grid.format_diag(ymax=5.0, ymin=1.00e-05)
             grid.format_diag(yscale="log", yformatter="log")
-        
+
         return (grid.fig, grid.axs)

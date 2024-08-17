@@ -260,7 +260,9 @@ class MENT:
             integration_grid_shape = tuple(integration_ndim * [integration_grid_resolution])
             integration_grid_coords = [
                 np.linspace(
-                    integration_limits[i][0], integration_limits[i][1], integration_grid_shape[i]
+                    integration_limits[i][0],
+                    integration_limits[i][1],
+                    integration_grid_shape[i],
                 )
                 for i in range(integration_ndim)
             ]

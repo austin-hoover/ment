@@ -67,8 +67,8 @@ def rotation_matrix(angle: float) -> np.ndarray:
 
 
 def forward(
-    x: np.ndarray, 
-    transforms: list[Callable], 
+    x: np.ndarray,
+    transforms: list[Callable],
     diagnostics: list[list[Callable]],
 ) -> list[list[np.ndarray]]:
     projections = []
@@ -79,10 +79,10 @@ def forward(
 
 
 def forward_with_diag_update(
-    x: np.ndarray, 
-    transforms: list[Callable], 
+    x: np.ndarray,
+    transforms: list[Callable],
     diagnostics: list[list[Callable]],
-    **diagnostic_kws
+    **diagnostic_kws,
 ) -> list[list[np.ndarray]]:
 
     diagnostics_new = deepcopy(diagnostics)

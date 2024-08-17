@@ -116,10 +116,8 @@ class Trainer:
             info["time"] = time.time() - start_time
             info["D_norm"] = None
             logger.write(info)
-            
+
             self.plot_model(epoch, **savefig_kws)
 
             result = self.eval_model(epoch)
             pprint(result)
-
-
