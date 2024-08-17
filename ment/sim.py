@@ -1,7 +1,10 @@
+from copy import deepcopy
 from typing import Callable
 from typing import Union
 
 import numpy as np
+
+from .utils import unravel
 
 
 class Transform:
@@ -64,10 +67,26 @@ def rotation_matrix(angle: float) -> np.ndarray:
 
 
 def forward(
-    x: np.ndarray, transforms: list[Callable], diagnostics: list[list[Callable]]
+    x: np.ndarray, 
+    transforms: list[Callable], 
+    diagnostics: list[list[Callable]],
 ) -> list[list[np.ndarray]]:
     projections = []
     for index, transform in enumerate(transforms):
         u = transform(x)
         projections.append([diagnostic(u) for diagnostic in diagnostics[index]])
     return projections
+
+
+def forward_with_diag_update(
+    x: np.ndarray, 
+    transforms: list[Callable], 
+    diagnostics: list[list[Callable]],
+    **diagnostic_kws
+) -> list[list[np.ndarray]]:
+
+    diagnostics_new = deepcopy(diagnostics)
+    for diagnostic in unravel(diagnostics_new):
+        for key, val in diagnostic_kws.items():
+            setattr(diagnostic, key, val)
+    return forward(x, transforms, diagnostics_new)

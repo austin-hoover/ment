@@ -4,6 +4,7 @@ from .grid import coords_to_edges
 from .grid import edges_to_coords
 from .grid import get_grid_points
 
+import scipy.ndimage
 import scipy.stats
 
 
@@ -15,6 +16,7 @@ class Histogram1D:
         direction: np.ndarray = None,
         kde: bool = False,
         kde_bandwidth: float = 1.0,
+        blur: float = 0.0
     ) -> None:
         self.axis = axis
         self.ndim = 1
@@ -24,6 +26,7 @@ class Histogram1D:
         self.bin_size = self.coords[1] - self.coords[0]
         self.kde = kde
         self.kde_bandwidth = kde_bandwidth * self.bin_size
+        self.blur = blur
 
     def get_grid_points(self) -> np.ndarray:
         return self.coords
@@ -36,14 +39,18 @@ class Histogram1D:
             return np.sum(x * self.direction, axis=1)
         return x[:, self.axis]
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
+    def __call__(self, x: np.ndarray, unfiltered: bool = False) -> np.ndarray:
         y = self.project(x)
 
-        if self.kde:
+        if (not unfiltered) and self.kde:
             estimator = scipy.stats.gaussian_kde(y, bw_method=self.kde_bandwidth)
             return estimator(self.coords)
 
         hist, _ = np.histogram(y, self.edges, density=True)
+        
+        if (not unfiltered) and self.blur:
+            hist = scipy.ndimage.gaussian_filter(hist, self.blur)    
+
         return hist
 
 
@@ -54,6 +61,7 @@ class Histogram2D:
         edges: list[np.ndarray],
         kde: bool = False,
         kde_bandwidth: float = 1.0,
+        blur: float = 0.0,
     ) -> None:
         self.axis = axis
         self.ndim = len(axis)
@@ -64,7 +72,8 @@ class Histogram2D:
         self.bin_sizes = [abs(c[1] - c[0]) for c in self.coords]
         self.kde = kde
         self.kde_bandwidth = kde_bandwidth * np.mean(self.bin_sizes)
-
+        self.blur = blur
+    
     def get_grid_points(self) -> np.ndarray:
         return self.grid_points
 
@@ -74,14 +83,18 @@ class Histogram2D:
     def project(self, x: np.ndarray) -> np.ndarray:
         return x[:, self.axis]
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
+    def __call__(self, x: np.ndarray, unfiltered: bool = False) -> np.ndarray:
         y = self.project(x)
 
-        if self.kde:
+        if (not unfiltered) and self.kde:
             estimator = scipy.stats.gaussian_kde(y.T, bw_method=self.kde_bandwidth)
             return estimator(self.grid_points.T).reshape(self.grid_shape)
 
         hist, _ = np.histogramdd(y, self.edges, density=True)
+
+        if (not unfiltered) and self.blur:
+            hist = scipy.ndimage.gaussian_filter(hist, self.blur)    
+
         return hist
 
 
