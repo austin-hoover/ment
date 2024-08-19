@@ -180,15 +180,17 @@ class PlotProj2D_Contour:
     def __init__(
         self, 
         ncols_max: int = 7,
-        plot_kws: dict = None,
+        lim_share: bool = False,
+        lim_scale: float = 1.0,
         plot_kws_true: dict = None,
         plot_kws_pred: dict = None,
+        **plot_kws
     ) -> None:
         self.ncols_max = ncols_max
+        self.lim_share = lim_share
+        self.lim_scale = lim_scale
 
         self.plot_kws = plot_kws
-        if self.plot_kws is None:
-            self.plot_kws = {}
 
         self.plot_kws_true = plot_kws_true
         if self.plot_kws_true is None:
@@ -222,8 +224,7 @@ class PlotProj2D_Contour:
         ncols = min(nmeas, self.ncols_max)
         nrows = int(np.ceil(nmeas / ncols))
         
-        fig, axs = pplt.subplots(ncols=ncols, nrows=nrows, figwidth=(1.1 * ncols))
-    
+        fig, axs = pplt.subplots(ncols=ncols, nrows=nrows, figwidth=(1.1 * ncols), share=self.lim_share)
         for index in range(nmeas):
             values_true = projections_true[index]
             values_pred = projections_pred[index]
@@ -231,6 +232,16 @@ class PlotProj2D_Contour:
             ax = axs[index]
             psv.plot_image(values_true, coords=coords, ax=ax, **self.plot_kws_true)
             psv.plot_image(values_pred, coords=coords, ax=ax, **self.plot_kws_pred)
+            
+        if self.lim_share:
+            ax = axs[0]
+            axs.format(xlim=np.multiply(ax.get_xlim(), self.lim_scale))
+            axs.format(ylim=np.multiply(ax.get_ylim(), self.lim_scale))
+        else:
+            for ax in axs:
+                ax.format(xlim=np.multiply(ax.get_xlim(), self.lim_scale))
+                ax.format(ylim=np.multiply(ax.get_ylim(), self.lim_scale))
+            
         return fig, axs
 
 
