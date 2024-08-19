@@ -80,7 +80,7 @@ class Plotter:
         if self.plot_proj is not None:
             coords = [diagnostic.coords for diagnostic in diagnostics]
             for function in self.plot_proj:
-                fig, axs = function(projections_true, projections_pred, coords)
+                fig, axs = function(projections_pred, projections_true, coords)
                 figs.append(fig)
         return figs
 
@@ -174,6 +174,64 @@ class PlotProj1D:
                 xlim = xlim * self.xlim_scale
                 ax.format(xlim=xlim)
         return (fig, axs)
+
+
+class PlotProj2D_Contour:
+    def __init__(
+        self, 
+        ncols_max: int = 7,
+        plot_kws: dict = None,
+        plot_kws_true: dict = None,
+        plot_kws_pred: dict = None,
+    ) -> None:
+        self.ncols_max = ncols_max
+
+        self.plot_kws = plot_kws
+        if self.plot_kws is None:
+            self.plot_kws = {}
+
+        self.plot_kws_true = plot_kws_true
+        if self.plot_kws_true is None:
+            self.plot_kws_true = {}
+
+        self.plot_kws_pred = plot_kws_true
+        if self.plot_kws_pred is None:
+            self.plot_kws_pred = {}
+
+        self.plot_kws.setdefault("kind", "contour")
+        self.plot_kws.setdefault("levels", np.linspace(0.01, 1.0, 7))
+        self.plot_kws.setdefault("lw", 0.75)
+        self.plot_kws.setdefault("process_kws", {})
+        self.plot_kws["process_kws"].setdefault("norm", "max")
+        self.plot_kws["process_kws"].setdefault("blur", 1.0)
+        
+        self.plot_kws_true.setdefault("color", "black")
+        self.plot_kws_pred.setdefault("color", "red")
+
+        for key, val in self.plot_kws.items():
+            self.plot_kws_true[key] = val
+            self.plot_kws_pred[key] = val
+    
+    def __call__(
+        self,
+        projections_pred: list[np.ndarray],
+        projections_true: list[np.ndarray],
+        coords_list: list[np.ndarray],
+    ) -> tuple:
+        nmeas = len(projections_true)
+        ncols = min(nmeas, self.ncols_max)
+        nrows = int(np.ceil(nmeas / ncols))
+        
+        fig, axs = pplt.subplots(ncols=ncols, nrows=nrows, figwidth=(1.1 * ncols))
+    
+        for index in range(nmeas):
+            values_true = projections_true[index]
+            values_pred = projections_pred[index]
+            coords = coords_list[index]
+            ax = axs[index]
+            psv.plot_image(values_true, coords=coords, ax=ax, **self.plot_kws_true)
+            psv.plot_image(values_pred, coords=coords, ax=ax, **self.plot_kws_pred)
+        return fig, axs
 
 
 class PlotDistCorner:
