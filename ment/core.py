@@ -355,7 +355,7 @@ class MENT:
         values_pred = diagnostic.normalize(values_pred)
         return values_pred
 
-    def gauss_seidel_step(self, learning_rate: float = 1.0, thresh: float = 0.0) -> None:
+    def gauss_seidel_step(self, learning_rate: float = 1.0, thresh: float = 0.0, thresh_type: str = "abs") -> None:
         for index, transform in enumerate(self.transforms):
             if self.verbose:
                 print(f"index={index}")
@@ -365,7 +365,11 @@ class MENT:
                 values_meas = self.projections[index][diag_index]
                 values_pred = self.simulate(index, diag_index)
 
-                values_pred[values_pred < thresh * values_pred.max()] = 0.0
+                # Threshold the projections (maybe should add this to diagnostic instead/)
+                _thresh = thresh
+                if thresh_type == "frac":
+                    _thresh = _thresh * values_pred.max()
+                values_pred[values_pred < _thresh] = 0.0
 
                 shape = lagrange_function.values.shape
                 lagrange_function.values = np.ravel(lagrange_function.values)
