@@ -3,11 +3,16 @@ name = "ment"
 version = "0.0.1"
 requires-python = ">=3.11"
 dependencies = [
-    "matplotlib==3.8.4",
-    "numpy<2.0.0",
-    "psdist @ git+https://github.com/austin-hoover/psdist",
+    "numpy",
     "scipy",
     "tqdm",
+]
+
+[project.optional-dependencies]
+test = [
+    "matplotlib",
+    "proplot @ git+https://github.com/cvanelteren/proplot.git@v0.9.91",
+    "psdist @ git+https://github.com/austin-hoover/psdist",
 ]
 
 [build-system]
@@ -16,7 +21,6 @@ requires = [
     "setuptools_scm>=6.2",
 ]
 build-backend = "setuptools.build_meta"
-
 
 [tool.setuptools]
 packages = ["ment"]
