@@ -68,7 +68,7 @@ sampler = ment.samp.GridSampler(
 
 # Define integration grid (if mode="integrate"). You need separate integration
 # limits for each measurement.
-integration_limits = 2 * [(-4.0, 4.0)]
+integration_limits = [(-4.0, 4.0),]
 integration_limits = [[integration_limits for _ in diagnostics] for _ in transforms]
 integration_size = 100
 
