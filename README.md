@@ -32,7 +32,7 @@ pip install -e '.[test]'
 Several examples are included in the `examples` folder. See `examples/simple.py` for the basic setup.
 Documentation is still in progress.
 
-```
+```python
 import numpy as np
 import matplotlib.pyplot as plt
 
