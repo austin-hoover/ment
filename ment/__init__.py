@@ -1,3 +1,4 @@
+from . import cov
 from . import diag
 from . import dist
 from . import grid
