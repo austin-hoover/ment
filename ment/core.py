@@ -358,9 +358,12 @@ class MENT:
     def gauss_seidel_step(self, learning_rate: float = 1.0, thresh: float = 0.0, thresh_type: str = "abs") -> None:
         for index, transform in enumerate(self.transforms):
             if self.verbose:
-                print(f"index={index}")
+                print(f"transform={index}")
 
             for diag_index, diagnostic in enumerate(self.diagnostics[index]):
+                if self.verbose:
+                    print(f"diagnostic={diag_index}")
+
                 lagrange_function = self.lagrange_functions[index][diag_index]
                 values_meas = self.projections[index][diag_index]
                 values_pred = self.simulate(index, diag_index)
