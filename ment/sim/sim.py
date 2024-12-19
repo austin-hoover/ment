@@ -1,10 +1,9 @@
 from copy import deepcopy
 from typing import Callable
-from typing import Union
 
 import numpy as np
 
-from .utils import unravel
+from ..utils import unravel
 
 
 class Transform:
