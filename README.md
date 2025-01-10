@@ -1,4 +1,4 @@
-# MENT
+[](url)# MENT
 
 This repository implements MENT, an algorithm to reconstruct a distribution from its projections using the method of maximum entropy.
 
@@ -22,8 +22,8 @@ pip install -e '.[test]'
 1. G. Minerbo, [MENT: A Maximum Entropy Algorithm for Reconstructing a Source from Projection Data](https://www-sciencedirect-com.ornl.idm.oclc.org/science/article/pii/0146664X79900340), Computer Graphics and Image Processing 10, 48 (1979).
 2. G. N. Minerbo, O. R. Sander, and R. A. Jameson, [Four-Dimensional Beam Tomography](https://ieeexplore.ieee.org/document/4331646), IEEE Transactions on Nuclear Science 28, 2231 (1981).
 3. J. C. Wong, A. Shishlo, A. Aleksandrov, Y. Liu, and C. Long, [4D Transverse Phase Space Tomography of an Operational Hydrogen Ion Beam via Noninvasive 2D Measurements Using Laser Wires](https://journals.aps.org/prab/abstract/10.1103/PhysRevAccelBeams.25.042801), Phys. Rev. Accel. Beams 25, 042801 (2022).
-4. A. Hoover, [Four-dimensional phase space tomography from one-dimensional measurements of a hadron beam](), arXiv preprint arXiv:2409.02862 (2024).
-5. A. Hoover and J. Wong, [High-dimensional maximum-entropy phase space tomography using normalizing flows](https://journals.aps.org/prresearch/abstract/10.1103/PhysRevResearch.6.033163), Physical Review Research 6.3 (2024): 033163.
+4. A. Hoover, [Four-dimensional phase space tomography from one-dimensional measurements of a hadron beam](https://doi.org/10.1103/PhysRevAccelBeams.27.122802), Physical Review Accelerators and Beams 27, 122802 (2024).
+5. A. Hoover and J. Wong, [High-dimensional maximum-entropy phase space tomography using normalizing flows](https://doi.org/10.1103/PhysRevResearch.6.033163), Physical Review Research 6.3, 033163 (2024).
 6. A. Hoover, [N-dimensional maximum-entropy tomography via particle sampling](https://arxiv.org/abs/2409.17915), arXiv preprint arXiv:2409.17915 (2024).
 
 
