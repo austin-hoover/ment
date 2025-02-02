@@ -1,4 +1,4 @@
-[](url)# MENT
+# MENT
 
 This repository implements MENT, an algorithm to reconstruct a distribution from its projections using the method of maximum entropy.
 
@@ -49,7 +49,7 @@ seed = 0
 # --------------------------------------------------------------------------------------
 
 # Create a list of transforms. Each transform is a function with the call signature 
-# `transform(X)`, where X is a numpy array of particle coordinates (shape (n, d)).
+# `transform(X)`, where X is a numpy array of particle coordinates (shape (n, d)). 
 def rotation_matrix(angle: float) -> np.ndarray:
     M = [[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]]
     M = np.array(M)
