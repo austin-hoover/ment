@@ -9,7 +9,6 @@ from pprint import pprint
 
 import matplotlib.pyplot as plt
 import numpy as np
-import proplot as pplt
 from tqdm.notebook import tqdm as tqdm_nb
 from tqdm import tqdm
 

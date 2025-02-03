@@ -1,11 +1,10 @@
 import os
 import time
 
-import matplotlib.pyplot as plt
 import numpy as np
-import proplot as pplt
 import psdist as ps
 import psdist.plot as psv
+import ultraplot as plt
 
 import ment
 

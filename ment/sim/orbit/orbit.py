@@ -1,4 +1,5 @@
 """Interface for PyORBIT simulations."""
+
 import time
 import numpy as np
 
@@ -13,7 +14,9 @@ from .bunch import get_bunch_coords
 from .bunch import reverse_bunch
 
 
-def track_bunch(bunch: Bunch, lattice: AccLattice, index_start: int = None, index_stop: int = None, **kws) -> Bunch:
+def track_bunch(
+    bunch: Bunch, lattice: AccLattice, index_start: int = None, index_stop: int = None, **kws
+) -> Bunch:
     if index_start is None:
         index_start = 0
 
@@ -32,7 +35,7 @@ def track_bunch(bunch: Bunch, lattice: AccLattice, index_start: int = None, inde
         bunch,
         index_start=lattice.getNodeIndex(node_start),
         index_stop=lattice.getNodeIndex(node_stop),
-        **kws
+        **kws,
     )
 
     if reverse:

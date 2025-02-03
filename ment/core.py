@@ -6,6 +6,7 @@ from typing import Callable
 from typing import Union
 
 import numpy as np
+import psdist as ps
 import scipy.interpolate
 from tqdm import tqdm
 
@@ -19,6 +20,9 @@ from .grid import get_grid_points
 from .sim import IdentityTransform
 from .sim import LinearTransform
 from .utils import wrap_tqdm
+
+
+type Histogram = Union[Histogram1D, HistogramND]
 
 
 class LagrangeFunction:
@@ -85,8 +89,7 @@ class MENT:
         self,
         ndim: int,
         transforms: list[Callable],
-        diagnostics: list[list[Any]],
-        projections: list[list[np.ndarray]],
+        projections: list[list[Histogram]],
         prior: Any,
         sampler: Callable,
         unnorm_matrix: np.ndarray = None,
@@ -117,8 +120,12 @@ class MENT:
         self.mode = mode
 
         self.transforms = transforms
-        self.diagnostics = self.set_diagnostics(diagnostics)
         self.projections = self.set_projections(projections)
+
+        # Copy projection histograms for simulation.
+        self.diagnostics = []
+        for index in range(len(self.projections)):
+            self.diagnostics.append([hist.copy() for hist in self.projections[index]])
 
         self.prior = prior
         if self.prior is None:
@@ -161,13 +168,7 @@ class MENT:
                 self.lagrange_functions[i][j].interp_kws = kws
                 self.lagrange_functions[i][j].set_values(self.lagrange_functions[i][j].values)
 
-    def set_diagnostics(self, diagnostics: list[list[Any]]) -> list[list[Any]]:
-        self.diagnostics = diagnostics
-        if self.diagnostics is None:
-            self.diagnostics = [[]]
-        return self.diagnostics
-
-    def set_projections(self, projections: list[list[np.ndarray]]) -> list[list[np.ndarray]]:
+    def set_projections(self, projections: list[list[Histogram]]) -> list[list[Histogram]]:
         self.projections = projections
         if self.projections is None:
             self.projections = [[]]
@@ -177,10 +178,10 @@ class MENT:
         self.lagrange_functions = []
         for index in range(len(self.projections)):
             self.lagrange_functions.append([])
-            for projection, diagnostic in zip(self.projections[index], self.diagnostics[index]):
-                values = projection > 0.0
+            for projection in self.projections[index]:
+                values = projection.values > 0.0
                 values = values.astype(float)
-                coords = diagnostic.coords
+                coords = projection.coords
                 lagrange_function = LagrangeFunction(
                     ndim=values.ndim,
                     coords=coords,
@@ -199,6 +200,7 @@ class MENT:
     def prob(self, z: np.ndarray, squeeze: bool = True) -> np.ndarray:
         if z.ndim == 1:
             z = z[None, :]
+
         x = self.unnormalize(z)
 
         prob = np.ones(z.shape[0])
@@ -239,7 +241,6 @@ class MENT:
         if self.integration_points is not None:
             return self.integration_points
 
-        projection = self.projections[index][diag_index]
         diagnostic = self.diagnostics[index][diag_index]
 
         projection_axis = diagnostic.axis
@@ -276,15 +277,26 @@ class MENT:
         self.integration_points = integration_points
         return self.integration_points
 
-    def simulate(self, index: int, diag_index: int) -> np.ndarray:
+    def simulate(self) -> list[list[Histogram]]:
+        diagnostics_copy = []
+        for index in range(len(self.diagnostics)):
+            diagnostics_copy.append([])
+            for diag_index in range(len(self.diagnostics[index])):
+                diagnostic_copy = self.simulate_single(index, diag_index)
+                diagnostics_copy[-1].append(diagnostic_copy)
+        return diagnostics_copy
+
+    def simulate_single(self, index: int, diag_index: int) -> Histogram:
+        # [to do] option to transport entire grid at once
+
         transform = self.transforms[index]
         diagnostic = self.diagnostics[index][diag_index]
 
         if self.mode == "sample":
             return diagnostic(transform(self.unnormalize(self.sample(self.nsamp))))
 
-        values_meas = self.projections[index][diag_index]
-        values_pred = np.zeros(values_meas.shape)
+        # Otherwise use numerical integration.
+        diagnostic.values *= 0.0
 
         projection_axis = diagnostic.axis
         if type(projection_axis) is int:
@@ -299,6 +311,8 @@ class MENT:
         projection_points = self.get_projection_points(index, diag_index)
         integration_points = self.get_integration_points(index, diag_index)
 
+        values_pred = None
+
         if self.mode == "integrate":
             u = np.zeros((integration_points.shape[0], self.ndim))
             for k, axis in enumerate(integration_axis):
@@ -310,7 +324,7 @@ class MENT:
             values_pred = np.zeros(projection_points.shape[0])
             for i, point in enumerate(wrap_tqdm(projection_points, self.verbose > 1)):
                 for k, axis in enumerate(projection_axis):
-                    if values_meas.ndim == 1:
+                    if diagnostic.ndim == 1:
                         u[:, axis] = point
                     else:
                         u[:, axis] = point[k]
@@ -318,8 +332,8 @@ class MENT:
                 prob = self.prob(self.normalize(transform.inverse(u)))  # symplectic
                 values_pred[i] = np.sum(prob)
 
-            if values_meas.ndim > 1:
-                values_pred = np.reshape(values_pred, values_meas.shape)
+            if diagnostic.ndim > 1:
+                values_pred = np.reshape(values_pred, diagnostic.shape)
 
         elif self.mode == "integrate_batched":
             # Experimental batched version...
@@ -352,28 +366,42 @@ class MENT:
         else:
             raise ValueError
 
-        values_pred = diagnostic.normalize(values_pred)
-        return values_pred
+        diagnostic.values = values_pred
+        diagnostic.normalize()
+        return diagnostic.copy()
 
-    def gauss_seidel_step(self, learning_rate: float = 1.0, thresh: float = 0.0, thresh_type: str = "abs") -> None:
+    def gauss_seidel_step(
+        self, learning_rate: float = 1.0, thresh: float = 0.0, thresh_type: str = "abs"
+    ) -> None:
         for index, transform in enumerate(self.transforms):
             if self.verbose:
                 print(f"transform={index}")
 
-            for diag_index, diagnostic in enumerate(self.diagnostics[index]):
+            for diag_index in range(len(self.diagnostics[index])):
                 if self.verbose:
                     print(f"diagnostic={diag_index}")
 
-                lagrange_function = self.lagrange_functions[index][diag_index]
-                values_meas = self.projections[index][diag_index]
-                values_pred = self.simulate(index, diag_index)
+                # Simulate measurements
+                self.simulate_single(index=index, diag_index=diag_index)
 
-                # Threshold the projections (maybe should add this to diagnostic instead/)
+                # Get current lagrange function
+                lagrange_function = self.lagrange_functions[index][diag_index]
+
+                # Get measured amd predicted projections
+                hist_meas = self.projections[index][diag_index]
+                hist_pred = self.diagnostics[index][diag_index]
+
+                values_meas = hist_meas.values.copy()
+                values_pred = hist_pred.values.copy()
+
+                # Threshold (better to add this to diagnostic to cut off
+                # low-density points).
                 _thresh = thresh
                 if thresh_type == "frac":
                     _thresh = _thresh * values_pred.max()
                 values_pred[values_pred < _thresh] = 0.0
 
+                # Update lagrange function
                 shape = lagrange_function.values.shape
                 lagrange_function.values = np.ravel(lagrange_function.values)
                 for i, (val_meas, val_pred) in enumerate(

@@ -1,46 +1,69 @@
+import copy
+import math
+from typing import Union
+from typing import Self
+
 import numpy as np
+import scipy.ndimage
+import scipy.stats
 
 from .grid import coords_to_edges
 from .grid import edges_to_coords
 from .grid import get_grid_points
 
-import scipy.ndimage
-import scipy.stats
-
 
 class HistogramND:
     def __init__(
-        self, 
+        self,
         axis: tuple[int, ...],
-        edges: list[np.ndarray],
+        edges: list[np.ndarray] = None,
+        coords: list[np.ndarray] = None,
+        values: np.ndarray = None,
         kde: bool = False,
-        kde_bandwidth: float = 1.0,
+        kde_bandwidth_frac: float = 1.0,
         blur: float = 0.0,
-        thresh: float = 0.0, 
+        thresh: float = 0.0,
         thresh_type: str = "abs",
         store_grid_points: bool = True,
     ) -> None:
         self.axis = axis
         self.ndim = len(axis)
+
+        self.coords = coords
         self.edges = edges
-        self.coords = [0.5 * (e[:-1] + e[1:]) for e in edges]
+        if self.coords is None and self.edges is not None:
+            self.coords = [edges_to_coords(e) for e in self.edges]
+        if self.edges is None and self.coords is not None:
+            self.edges = [coords_to_edges(c) for c in self.coords]
+
+        self.shape = tuple([len(c) for c in self.coords])
+        self.values = values
+        if self.values is None:
+            self.values = np.zeros(self.shape)
 
         self.bin_sizes = [self.coords[i][1] - self.coords[i][0] for i in range(self.ndim)]
+        self.bin_volume = np.prod(self.bin_sizes)
         self.grid_shape = tuple([len(c) for c in self.coords])
         self.grid_points = None
         self.store_grid_points = store_grid_points
 
         self.kde = kde
-        self.kde_bandwidth = kde_bandwidth * np.mean(self.bin_sizes)
+        self.kde_bandwidth_frac = kde_bandwidth_frac
+        self.kde_bandwidth = kde_bandwidth_frac * np.mean(self.bin_sizes)
+
         self.blur = blur
         self.thresh = thresh
         self.thresh_type = thresh_type
 
-    def normalize(self, values: np.ndarray) -> np.ndarray:
-        return values / np.sum(values) / np.prod([e[1] - e[0] for e in self.edges])
+    def copy(self) -> Self:
+        return copy.deepcopy(self)
 
-    def project(self, x: np.ndarray) -> np.ndarray:
-        return x[:, self.axis]
+    def normalize(self) -> None:
+        values = np.copy(self.values)
+        values_sum = np.sum(values)
+        if values_sum > 0.0:
+            values = values / values_sum / self.bin_volume
+        self.values = values
 
     def get_grid_points(self) -> np.ndarray:
         if self.grid_points is not None:
@@ -53,81 +76,115 @@ class HistogramND:
 
         return grid_points
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        y = self.project(x)
+    def project(self, x: np.ndarray) -> np.ndarray:
+        return x[:, self.axis]
+
+    def bin(self, x: np.ndarray) -> np.ndarray:
+        x_proj = self.project(x)
 
         if self.kde:
-            estimator = scipy.stats.gaussian_kde(y.T, bw_method=self.kde_bandwidth)
+            estimator = scipy.stats.gaussian_kde(x_proj.T, bw_method=self.kde_bandwidth)
             grid_points = self.get_grid_points()
             return estimator(grid_points.T).reshape(self.grid_shape)
 
-        hist, _ = np.histogramdd(y, bins=self.edges, density=True)
+        values, _ = np.histogramdd(x_proj, bins=self.edges, density=True)
 
         if self.blur:
-            hist = scipy.ndimage.gaussian_filter(hist, self.blur)
+            values = scipy.ndimage.gaussian_filter(values, self.blur)
 
         if self.thresh:
-            t = self.thresh
+            max_value = self.thresh
             if self.thresh_type == "frac":
-                t = t * np.max(hist)
-            hist[hist < t] = 0.0
-            
-        return hist
+                max_value = max_value * np.max(values)
+            values[values < max_value] = 0.0
+
+        self.values = values
+        self.normalize()
+        return values
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        return self.bin(x)
 
 
 class Histogram1D:
     def __init__(
         self,
         axis: int,
-        edges: np.ndarray,
+        edges: np.ndarray = None,
+        coords: np.ndarray = None,
+        values: np.ndarray = None,
         direction: np.ndarray = None,
         kde: bool = False,
-        kde_bandwidth: float = 1.0,
+        kde_bandwidth_frac: float = 1.0,
         blur: float = 0.0,
-        thresh: float = 0.0, 
+        thresh: float = 0.0,
         thresh_type: str = "abs",
     ) -> None:
         self.axis = axis
         self.ndim = 1
+
+        self.coords = coords
         self.edges = edges
-        self.coords = edges_to_coords(edges)
+        if self.coords is None and self.edges is not None:
+            self.coords = edges_to_coords(self.edges)
+        if self.edges is None and self.coords is not None:
+            self.edges = coords_to_edges(self.coords)
+
+        self.shape = len(self.coords)
+        self.values = values
+        if self.values is None:
+            self.values = np.zeros(self.shape)
+
         self.direction = direction
         self.bin_size = self.coords[1] - self.coords[0]
-        
+        self.bin_volume = self.bin_width = self.bin_size
+
         self.kde = kde
-        self.kde_bandwidth = kde_bandwidth * self.bin_size
+        self.kde_bandwidth_frac = kde_bandwidth_frac
+        self.kde_bandwidth = kde_bandwidth_frac * self.bin_size
         self.blur = blur
         self.thresh = thresh
         self.thresh_type = thresh_type
 
+    def copy(self) -> Self:
+        return copy.deepcopy(self)
+
     def get_grid_points(self) -> np.ndarray:
         return self.coords
 
-    def normalize(self, values: np.ndarray) -> np.ndarray:
-        return values / np.sum(values) / (self.edges[1] - self.edges[0])
+    def normalize(self) -> None:
+        values = np.copy(self.values)
+        values_sum = np.sum(values)
+        if values_sum > 0.0:
+            values = values / values_sum / self.bin_volume
+        self.values = values
 
     def project(self, x: np.ndarray) -> np.ndarray:
         if self.direction is not None:
             return np.sum(x * self.direction, axis=1)
         return x[:, self.axis]
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        y = self.project(x)
+    def bin(self, x: np.ndarray) -> np.ndarray:
+        x_proj = self.project(x)
 
         if self.kde:
-            estimator = scipy.stats.gaussian_kde(y, bw_method=self.kde_bandwidth)
+            estimator = scipy.stats.gaussian_kde(x_proj, bw_method=self.kde_bandwidth)
             return estimator(self.coords)
 
-        hist, _ = np.histogram(y, self.edges, density=True)
+        values, _ = np.histogram(x_proj, self.edges, density=True)
 
         if self.blur:
-            hist = scipy.ndimage.gaussian_filter(hist, self.blur)
+            values = scipy.ndimage.gaussian_filter(values, self.blur)
 
         if self.thresh:
-            t = self.thresh
+            max_value = self.thresh
             if self.thresh_type == "frac":
-                t = t * np.max(hist)
-            hist[hist < t] = 0.0
+                max_value = max_value * np.max(hist)
+            values[values < max_value] = 0.0
 
-        return hist
+        self.values = values
+        self.normalize()
+        return values
 
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        return self.bin(x)

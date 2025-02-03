@@ -5,17 +5,23 @@ from pprint import pprint
 from typing import Any
 from typing import Callable
 from typing import Optional
+from typing import Union
 
-import matplotlib.pyplot as plt
 import numpy as np
-import proplot as pplt
 import psdist as ps
 import psdist.plot as psv
+import ultraplot as plt
 
 from ..core import MENT
-from ..sim import forward
-from ..sim import forward_with_diag_update
+from ..diag import Histogram1D
+from ..diag import HistogramND
+from ..sim import simulate
+from ..sim import simulate_with_diag_update
+from ..sim import copy_histograms
 from ..utils import unravel
+
+
+type Histogram = Union[Histogram1D, HistogramND]
 
 
 class Plotter:
@@ -35,10 +41,10 @@ class Plotter:
             Number of samples to plot.
         plot_dist: list[callable]
             Plots samples from true and predicted distributions.
-            Signature: `plot_dist(X)`.
+            Signature: `plot_dist(x: np.ndarray)`.
         plot_proj: list[callable]
             Plots simulated vs. actual measurements.
-            Signature: `plot_proj(values_meas, values_pred, coords)`.
+            Signature: `plot_proj(projections_meas: list[Histogram], projections_pred: list[Histogram])`.
         """
         self.n_samples = n_samples
         self.plot_proj = plot_proj
@@ -47,6 +53,7 @@ class Plotter:
         if self.plot_proj is not None:
             if type(self.plot_proj) not in [list, tuple]:
                 self.plot_proj = [self.plot_proj]
+
         if self.plot_dist is not None:
             if type(self.plot_dist) not in [list, tuple]:
                 self.plot_dist = [self.plot_dist]
@@ -56,31 +63,33 @@ class Plotter:
         x_pred = model.unnormalize(model.sample(self.n_samples))
 
         # Simulate measurements.
-        projections_true = model.projections
-        projections_true = unravel(projections_true)
-        projections_pred = forward_with_diag_update(
+        projections_true = copy_histograms(model.projections)
+        projections_pred = copy_histograms(model.diagnostics)
+
+        projections_pred = simulate_with_diag_update(
             x_pred,
             model.transforms,
-            model.diagnostics,
+            projections_pred,
             kde=False,
             blur=False,
         )
-        projections_pred = unravel(projections_pred)
-        diagnostics = unravel(model.diagnostics)
 
+        projections_true = unravel(projections_true)
+        projections_pred = unravel(projections_pred)
+
+        # Make plots
         figs = []
 
-        # Plot samples.
+        ## Plot samples
         if self.plot_dist is not None:
             for function in self.plot_dist:
                 fig, axs = function(x_pred)
                 figs.append(fig)
 
-        # Plot measured vs. simulated projections.
+        ## Plot measured vs. simulated projections
         if self.plot_proj is not None:
-            coords = [diagnostic.coords for diagnostic in diagnostics]
             for function in self.plot_proj:
-                fig, axs = function(projections_pred, projections_true, coords)
+                fig, axs = function(projections_pred, projections_true)
                 figs.append(fig)
         return figs
 
@@ -145,11 +154,9 @@ class PlotProj1D:
 
     def __call__(
         self,
-        projections_pred: list[np.ndarray],
-        projections_true: list[np.ndarray],
-        coords: list[np.ndarray],
-    ) -> tuple:
-
+        projections_pred: list[Histogram1D],
+        projections_true: list[Histogram1D],
+    ):
         nmeas = len(projections_pred)
         ncols = min(self.ncols, nmeas)
         nrows = int(np.ceil(nmeas / ncols))
@@ -158,12 +165,20 @@ class PlotProj1D:
         self.fig_kws.setdefault("nrows", nrows)
         self.fig_kws.setdefault("figsize", (1.50 * ncols, 1.25 * nrows))
 
-        fig, axs = pplt.subplots(**self.fig_kws)
+        fig, axs = plt.subplots(**self.fig_kws)
 
-        for i, (y_pred, y_true) in enumerate(zip(projections_pred, projections_true)):
+        for i, (proj_pred, proj_true) in enumerate(zip(projections_pred, projections_true)):
             ax = axs[i]
-            psv.plot_profile(y_pred / np.max(y_true), coords=coords[i], ax=ax, **self.plot_kws_pred)
-            psv.plot_profile(y_true / np.max(y_true), coords=coords[i], ax=ax, **self.plot_kws_true)
+
+            proj_pred = proj_pred.copy()
+            proj_true = proj_true.copy()
+
+            scale = proj_pred.values.max()
+            proj_pred.values /= scale
+            proj_true.values /= scale
+
+            psv.plot_hist_1d(proj_pred, ax=ax, **self.plot_kws_pred)
+            psv.plot_hist_1d(proj_true, ax=ax, **self.plot_kws_true)
             ax.format(ymin=self.ymin, ymax=self.ymax, xmin=self.xmin, xmax=self.xmax)
             if self.log:
                 ax.format(yscale="log", yformatter="log")
@@ -178,13 +193,13 @@ class PlotProj1D:
 
 class PlotProj2D_Contour:
     def __init__(
-        self, 
+        self,
         ncols_max: int = 7,
         lim_share: bool = False,
         lim_scale: float = 1.0,
         plot_kws_true: dict = None,
         plot_kws_pred: dict = None,
-        **plot_kws
+        **plot_kws,
     ) -> None:
         self.ncols_max = ncols_max
         self.lim_share = lim_share
@@ -206,33 +221,33 @@ class PlotProj2D_Contour:
         self.plot_kws.setdefault("process_kws", {})
         self.plot_kws["process_kws"].setdefault("norm", "max")
         self.plot_kws["process_kws"].setdefault("blur", 1.0)
-        
+
         self.plot_kws_true.setdefault("color", "black")
         self.plot_kws_pred.setdefault("color", "red")
 
         for key, val in self.plot_kws.items():
             self.plot_kws_true[key] = val
             self.plot_kws_pred[key] = val
-    
+
     def __call__(
         self,
-        projections_pred: list[np.ndarray],
-        projections_true: list[np.ndarray],
-        coords_list: list[np.ndarray],
+        projections_pred: list[HistogramND],
+        projections_true: list[HistogramND],
     ) -> tuple:
         nmeas = len(projections_true)
         ncols = min(nmeas, self.ncols_max)
         nrows = int(np.ceil(nmeas / ncols))
-        
-        fig, axs = pplt.subplots(ncols=ncols, nrows=nrows, figwidth=(1.1 * ncols), share=self.lim_share)
+
+        fig, axs = plt.subplots(
+            ncols=ncols, nrows=nrows, figwidth=(1.1 * ncols), share=self.lim_share
+        )
         for index in range(nmeas):
-            values_true = projections_true[index]
-            values_pred = projections_pred[index]
-            coords = coords_list[index]
             ax = axs[index]
-            psv.plot_image(values_true, coords=coords, ax=ax, **self.plot_kws_true)
-            psv.plot_image(values_pred, coords=coords, ax=ax, **self.plot_kws_pred)
-            
+            proj_true = projections_true[index]
+            proj_pred = projections_pred[index]
+            psv.plot_hist(proj_true, ax=ax, **self.plot_kws_true)
+            psv.plot_hist(proj_true, ax=ax, **self.plot_kws_pred)
+
         if self.lim_share:
             ax = axs[0]
             axs.format(xlim=np.multiply(ax.get_xlim(), self.lim_scale))
@@ -241,7 +256,7 @@ class PlotProj2D_Contour:
             for ax in axs:
                 ax.format(xlim=np.multiply(ax.get_xlim(), self.lim_scale))
                 ax.format(ylim=np.multiply(ax.get_ylim(), self.lim_scale))
-            
+
         return fig, axs
 
 
@@ -277,9 +292,9 @@ class PlotDistCorner:
         if self.log:
             self.plot_kws["norm"] = "log"
 
-    def __call__(self, X: np.ndarray) -> tuple:
-        grid = psv.CornerGrid(X.shape[1], **self.fig_kws)
-        grid.plot_points(X, **self.plot_kws)
+    def __call__(self, x: np.ndarray) -> tuple:
+        grid = psv.CornerGrid(x.shape[1], **self.fig_kws)
+        grid.plot(x, **self.plot_kws)
 
         grid.format_diag(ymax=self.diag_ymax, ymin=self.diag_ymin)
         if self.log:
