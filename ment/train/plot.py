@@ -173,7 +173,7 @@ class PlotProj1D:
             proj_pred = proj_pred.copy()
             proj_true = proj_true.copy()
 
-            scale = proj_pred.values.max()
+            scale = proj_true.values.max()
             proj_pred.values /= scale
             proj_true.values /= scale
 
