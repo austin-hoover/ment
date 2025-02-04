@@ -14,7 +14,7 @@ seed = 0
 # --------------------------------------------------------------------------------------
 
 rng = np.random.default_rng(seed)
-x_true = rng.normal(size=(100_000, ndim))
+x_true = rng.normal(size=(1_000_000, ndim))
 x_true = x_true / np.linalg.norm(x_true, axis=1)[:, None]
 x_true = x_true * 1.5
 x_true = x_true + rng.normal(size=x_true.shape, scale=0.25)
@@ -124,7 +124,7 @@ for epoch in range(4):
 
 
 # Plot final distribution
-x_pred = model.sample(1_000_000)
+x_pred = model.sample(x_true.shape[0])
 
 fig, axs = plt.subplots(ncols=2, constrained_layout=True)
 for ax, X in zip(axs, [x_pred, x_true]):

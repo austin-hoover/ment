@@ -5,4 +5,11 @@ from . import grid
 from . import prior
 from . import samp
 from . import sim
+
 from .core import *
+from .diag import *
+from .grid import *
+from .prior import *
+from .samp import *
+from .sim import *
+from .utils import *

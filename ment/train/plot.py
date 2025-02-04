@@ -5,6 +5,7 @@ from pprint import pprint
 from typing import Any
 from typing import Callable
 from typing import Optional
+from typing import TypeAlias
 from typing import Union
 
 import numpy as np
@@ -21,7 +22,7 @@ from ..sim import copy_histograms
 from ..utils import unravel
 
 
-type Histogram = Union[Histogram1D, HistogramND]
+Histogram: TypeAlias = Union[Histogram1D, HistogramND]  # python<3.12 compatible
 
 
 class Plotter:

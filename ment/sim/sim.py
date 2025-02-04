@@ -1,5 +1,6 @@
 from copy import deepcopy
 from typing import Callable
+from typing import TypeAlias
 from typing import Union
 
 import numpy as np
@@ -9,7 +10,7 @@ from ..diag import Histogram1D
 from ..utils import unravel
 
 
-type Histogram = Union[Histogram1D, HistogramND]
+Histogram: TypeAlias = Union[Histogram1D, HistogramND]  # python<3.12 compatible
 
 
 class Transform:

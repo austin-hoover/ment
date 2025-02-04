@@ -3,6 +3,7 @@ import time
 import pickle
 from typing import Any
 from typing import Callable
+from typing import TypeAlias
 from typing import Union
 
 import numpy as np
@@ -12,20 +13,22 @@ from tqdm import tqdm
 
 from .diag import Histogram1D
 from .diag import HistogramND
-from .prior import GaussianPrior
-from .prior import UniformPrior
-from .grid import coords_to_edges
-from .grid import edges_to_coords
 from .grid import get_grid_points
 from .sim import IdentityTransform
 from .sim import LinearTransform
 from .utils import wrap_tqdm
+from .utils import unravel
 
 
-type Histogram = Union[Histogram1D, HistogramND]
+Histogram: TypeAlias = Union[Histogram1D, HistogramND]  # python<3.12 compatible
 
 
 class LagrangeFunction:
+    """Represents Lagrange multiplier function on regular grid.
+
+    This function can be evaluated at any point by interpolation.
+    """
+
     def __init__(
         self,
         ndim: int,
@@ -59,9 +62,9 @@ class LagrangeFunction:
 
 
 class MENT:
-    """Maximum Entropy Tomography (MENT) model.
+    """Maximum-Entropy Tomography (MENT) model.
 
-    MENT reconstructs the distribution in normalized coordinates z. The normalized
+    NOTE: MENT reconstructs the distribution in normalized coordinates z. The normalized
     coordinates are related to the real coordinates by a linear transformation
     x = Vz. To generate samples from the real distribution, call `unnormalize`:
 
@@ -78,11 +81,6 @@ class MENT:
     ```
 
     There is no need to do this if V = I = identity matrix.
-
-
-    Attributes
-    ----------
-    ...
     """
 
     def __init__(
@@ -96,7 +94,6 @@ class MENT:
         nsamp: int = 1_000_000,
         integration_limits: list[tuple[float, float]] = None,
         integration_size: int = None,
-        integration_batches: int = None,
         store_integration_points: bool = True,
         interpolation_kws: dict = None,
         verbose: Union[bool, int] = True,
@@ -106,14 +103,40 @@ class MENT:
 
         Parameters
         ----------
-        ...
-
-        sampler: Callable
+        ndim : int
+            Number of phase space dimensions.
+        transforms : list[Callable]
+            A list of functions that transform the phase space coordinates. Call
+            signature is `transform(x: np.ndarray) -> np.ndarray`.
+        projections : list[list[Histogram]]
+            List of measured projections, which we store as HistogramND or Histogram1D
+            objects. We provide a list of projections for each transform.
+        unnorm_matrix : np.ndarray
+            Matrix V that **unnormalizes** the phase space coordinates: x = Vz.
+            Defaults to identity matrix. If V = I, ignore all comments about normalized
+            and unnormalized coordinates.
+        prior : Any
+            Prior distribution over the **normalized** phase space coordinates z = V^-1 x.
+            Must implement `prior.prob(z: np.ndarray) -> np.ndarray`.
+        sampler : Callable
             Calling `sampler(f, n)` generates n samples from the function f.
-        prior: Any
-            Prior distribution for relative entropy calculations. Must implement `prob(z)`.
-            The prior is defined in normalized space.
-        ...
+        nsamp : int
+            Number of samples to use when computing projections. Only relevant if
+            `self.mode=="sample".
+        integration_limits : list[tuple[float, float]]
+            List of (min, max) coordinates of integration grid.
+        integration_size : int
+            Number of integration points.
+        store_integration_points : bool
+            Whether to keep the integration points in memory.
+        interpolation_kws : dict
+            Key word arguments passed to `scipy.interpolate.RegularGridInterpolator` for
+            interpolating the Lagrange multiplier functions.
+        verbose : int
+            Whether to print updates during calculations.
+        mode : {"sample" or "forward", "integration" or "backward"}
+            Whether to use numerical integration or particle sampling to compuate
+            projections.
         """
         self.ndim = ndim
         self.verbose = int(verbose)
@@ -143,13 +166,17 @@ class MENT:
 
         self.integration_limits = integration_limits
         self.integration_size = integration_size
-        self.integration_batches = integration_batches
         self.integration_points = None
         self.store_integration_points = store_integration_points
 
         self.epoch = 0
 
     def set_unnorm_transform(self, unnorm_matrix: np.ndarray) -> Callable:
+        """Set inverse of normalization matrix.
+
+        The unnormalization matrix transforms normalized coordinates z to
+        phase space coordinates x via the linear mapping: x = Vz.
+        """
         self.unnorm_matrix = unnorm_matrix
         if self.unnorm_matrix is None:
             self.unnorm_transform = IdentityTransform()
@@ -159,6 +186,10 @@ class MENT:
         return self.unnorm_transform
 
     def set_interpolation_kws(self, **kws) -> None:
+        """Set interpolation key word arguments for lagrange functions.
+
+        These arguments are passed to `scipy.interpolate.RegularGridInterpolator`.
+        """
         kws.setdefault("method", "linear")
         kws.setdefault("bounds_error", False)
         kws.setdefault("fill_value", 0.0)
@@ -169,12 +200,20 @@ class MENT:
                 self.lagrange_functions[i][j].set_values(self.lagrange_functions[i][j].values)
 
     def set_projections(self, projections: list[list[Histogram]]) -> list[list[Histogram]]:
+        """Set list of measured projections (histograms)."""
         self.projections = projections
         if self.projections is None:
             self.projections = [[]]
         return self.projections
 
     def init_lagrange_functions(self, **interp_kws) -> list[list[np.ndarray]]:
+        """Initialize lagrange multipler functions.
+
+        The function l(u_proj) = 1 if the measured projection g(u_proj) > 0,
+        otherwise l(u_proj) = 0.
+
+        Key word arguments passed to `LagrangeFunction` constructor.
+        """
         self.lagrange_functions = []
         for index in range(len(self.projections)):
             self.lagrange_functions.append([])
@@ -192,12 +231,19 @@ class MENT:
         return self.lagrange_functions
 
     def unnormalize(self, z: np.ndarray) -> np.ndarray:
+        """Unnormalize coordinates z: x = Vz."""
         return self.unnorm_transform(z)
 
     def normalize(self, x: np.ndarray) -> np.ndarray:
+        """Normalize coordinates x: z = V^-1 z."""
         return self.unnorm_transform.inverse(x)
 
     def prob(self, z: np.ndarray, squeeze: bool = True) -> np.ndarray:
+        """Compute probability density at points x = Vz.
+
+        The points z are defined in normalized phase space (equal to
+        regular phase space if V = I.
+        """
         if z.ndim == 1:
             z = z[None, :]
 
@@ -217,6 +263,10 @@ class MENT:
         return prob
 
     def sample(self, size: int, **kws) -> np.ndarray:
+        """Sample `size` particles from the distribution.
+
+        Key word arguments go to `self.sampler`.
+        """
 
         def prob_func(z: np.ndarray) -> np.ndarray:
             return self.prob(z, squeeze=False)
@@ -225,6 +275,7 @@ class MENT:
         return z
 
     def estimate_entropy(self, nsamp: float) -> float:
+        """Estimate the relative entropy via Monte Carlo."""
         z = self.sample(nsamp)
         log_p = np.log(self.prob(z) + 1.00e-15)
         log_q = np.log(self.prior.prob(z) + 1.00e-15)
@@ -232,12 +283,14 @@ class MENT:
         return entropy
 
     def get_projection_points(self, index: int, diag_index: int) -> np.ndarray:
+        """Return points on projection axis for specified diagnostic."""
         diagnostic = self.diagnostics[index][diag_index]
         return diagnostic.get_grid_points()
 
     def get_integration_points(
         self, index: int, diag_index: int, method: str = "grid"
     ) -> np.ndarray:
+        """Return integration points for specific diagnnostic."""
         if self.integration_points is not None:
             return self.integration_points
 
@@ -278,6 +331,7 @@ class MENT:
         return self.integration_points
 
     def simulate(self) -> list[list[Histogram]]:
+        """Simulate all measurements."""
         diagnostics_copy = []
         for index in range(len(self.diagnostics)):
             diagnostics_copy.append([])
@@ -287,12 +341,24 @@ class MENT:
         return diagnostics_copy
 
     def simulate_single(self, index: int, diag_index: int) -> Histogram:
-        # [to do] option to transport entire grid at once
+        """Simulate a single measurement.
 
+        Parameters
+        ----------
+        index : int
+            Transformation index.
+        diag_index : int
+            Diagnostic index for the given transformation.
+
+        Returns
+        -------
+        Histogram
+            Copy of updated histogram diagnostic.
+        """
         transform = self.transforms[index]
         diagnostic = self.diagnostics[index][diag_index]
 
-        if self.mode == "sample":
+        if self.mode in ["sample", "forward"]:
             return diagnostic(transform(self.unnormalize(self.sample(self.nsamp))))
 
         # Otherwise use numerical integration.
@@ -311,9 +377,10 @@ class MENT:
         projection_points = self.get_projection_points(index, diag_index)
         integration_points = self.get_integration_points(index, diag_index)
 
-        values_pred = None
+        if self.mode in ["integrate", "backward"]:
+            # [To do] transport entire grid at once (okay in 2D problems)
 
-        if self.mode == "integrate":
+            # Initialize array of integration points (u).
             u = np.zeros((integration_points.shape[0], self.ndim))
             for k, axis in enumerate(integration_axis):
                 if integration_ndim == 1:
@@ -321,58 +388,51 @@ class MENT:
                 else:
                     u[:, axis] = integration_points[:, k]
 
-            values_pred = np.zeros(projection_points.shape[0])
+            # Initialize array of projected densities (values_proj).
+            values_proj = np.zeros(projection_points.shape[0])
             for i, point in enumerate(wrap_tqdm(projection_points, self.verbose > 1)):
+                # Set values of u along projection axis.
                 for k, axis in enumerate(projection_axis):
                     if diagnostic.ndim == 1:
                         u[:, axis] = point
                     else:
                         u[:, axis] = point[k]
 
-                prob = self.prob(self.normalize(transform.inverse(u)))  # symplectic
-                values_pred[i] = np.sum(prob)
+                # Compute the probability density at the integration points.
+                # Here we assume a volume-preserving transformation with Jacobian
+                # determinant equal to 1, such that p(x) = p(u).
+                prob = self.prob(self.normalize(transform.inverse(u)))
 
+                # Sum over all integration points.
+                values_proj[i] = np.sum(prob)
+
+            # Reshape the projected density array.
             if diagnostic.ndim > 1:
-                values_pred = np.reshape(values_pred, diagnostic.shape)
+                values_proj = values_proj.reshape(diagnostic.shape)
 
-        elif self.mode == "integrate_batched":
-            # Experimental batched version...
-            integration_batch_size = int(self.integration_size / self.integration_batches)
-            u = np.zeros((integration_batch_size * values_meas.size, self.ndim))
-
-            if projection_ndim == 1:
-                projection_axis = projection_axis[0]
-                u[:, projection_axis] = np.repeat(projection_points, integration_batch_size)
-                for _ in range(self.integration_batches):
-                    lb = integration_limits[0]
-                    ub = integration_limits[1]
-                    u[:, integration_axis] = np.random.uniform(
-                        lb, ub, size=(u.shape[0], integration_ndim)
-                    )
-                    prob = self.prob(self.normalize(transform.inverse(u)))
-                    prob = np.array(np.split(prob, values_meas.size))
-                    values_pred += np.sum(prob, axis=1)
-            else:
-                u[:, projection_axis] = np.repeat(projection_points, integration_batch_size, axis=0)
-                for _ in range(self.integration_batches):
-                    lb = [xmin for (xmin, xmax) in integration_limits]
-                    ub = [xmax for (xmin, xmax) in integration_limits]
-                    u[:, integration_axis] = np.random.uniform(
-                        lb, ub, size=(u.shape[0], integration_ndim)
-                    )
-                    prob = self.prob(self.normalize(transform.inverse(u)))
-                    prob = np.array(np.split(prob, values_meas.size))
-                    values_pred += np.reshape(np.sum(prob, axis=1), values_meas.shape)  # error?
         else:
-            raise ValueError
+            raise ValueError(f"Invalid mode {self.mode}")
 
-        diagnostic.values = values_pred
+        # Update the diagnostic values.
+        diagnostic.values = values_proj
         diagnostic.normalize()
+
+        # Return a copy of the diagnostic.
         return diagnostic.copy()
 
     def gauss_seidel_step(
         self, learning_rate: float = 1.0, thresh: float = 0.0, thresh_type: str = "abs"
     ) -> None:
+        """Perform Gauss-Seidel update.
+
+        The update is defined as:
+
+            h *= 1.0 + omega * ((g_meas / g_pred) - 1.0)
+
+        where h = exp(lambda) is the lagrange function, 0 < omega <= 1 is a learning
+        rate or damping parameter, g_meas is the measured projection, and g_pred
+        is the simulated projection.
+        """
         for index, transform in enumerate(self.transforms):
             if self.verbose:
                 print(f"transform={index}")
@@ -384,42 +444,42 @@ class MENT:
                 # Simulate measurements
                 self.simulate_single(index=index, diag_index=diag_index)
 
-                # Get current lagrange function
+                # Get lagrange multpliers, measured and simulated projections
                 lagrange_function = self.lagrange_functions[index][diag_index]
-
-                # Get measured amd predicted projections
                 hist_meas = self.projections[index][diag_index]
                 hist_pred = self.diagnostics[index][diag_index]
 
+                # Unravel
+                values_lagr = lagrange_function.values.copy()
                 values_meas = hist_meas.values.copy()
                 values_pred = hist_pred.values.copy()
 
-                # Threshold (better to add this to diagnostic to cut off
-                # low-density points).
-                _thresh = thresh
+                # Threshold simulated projections (probably better to add to diagnostic)
                 if thresh_type == "frac":
-                    _thresh = _thresh * values_pred.max()
-                values_pred[values_pred < _thresh] = 0.0
+                    thresh = thresh * np.max(values_pred)
+                values_pred[values_pred < thresh] = 0.0
 
-                # Update lagrange function
-                shape = lagrange_function.values.shape
-                lagrange_function.values = np.ravel(lagrange_function.values)
-                for i, (val_meas, val_pred) in enumerate(
-                    zip(np.ravel(values_meas), np.ravel(values_pred))
-                ):
-                    if (val_meas != 0.0) and (val_pred != 0.0):
-                        h_old = lagrange_function.values[i]
-                        h_new = h_old * (1.0 + learning_rate * ((val_meas / val_pred) - 1.0))
-                        lagrange_function.values[i] = h_new
-                lagrange_function.values = np.reshape(lagrange_function.values, shape)
+                # Update lagrange multipliers
+                idx = np.logical_and(values_meas > 0.0, values_pred > 0.0)
+                ratio = np.ones(values_lagr.shape)
+                ratio[idx] = values_meas[idx] / values_pred[idx]
+                values_lagr *= 1.0 + learning_rate * (ratio - 1.0)
+
+                # Reset
+                lagrange_function.values = values_lagr
                 lagrange_function.set_values(lagrange_function.values)
                 self.lagrange_functions[index][diag_index] = lagrange_function
+
         self.epoch += 1
 
-    def parameters(self):
-        return
+    def parameters(self) -> np.ndarray:
+        """Return lagrange multplier values."""
+        parameters = [lfunc.values.ravel() for lfunc in unravel(self.lagrange_functions)]
+        parameters = np.hstack(parameters)
+        return parameters
 
     def save(self, path: str) -> None:
+        """Save model to pickled file."""
         state = {
             "transforms": self.transforms,
             "diagnostics": self.diagnostics,
@@ -432,11 +492,14 @@ class MENT:
             "lagrange_functions": self.lagrange_functions,
         }
 
+        # [Q] Can we just do `pickle.dump(self, file)`?
+
         file = open(path, "wb")
         pickle.dump(state, file, pickle.HIGHEST_PROTOCOL)
         file.close()
 
     def load(self, path: str) -> None:
+        """Load model from pickled file."""
         file = open(path, "rb")
 
         state = pickle.load(file)

@@ -4,7 +4,7 @@ set -x
 
 for filename in *.ipynb; do
   if [[ ! "$filename" == *".ipynb_checkpoints"* ]]; then
-    jupyter nbconvert --inplace --execute $filename;
+    jupyter nbconvert --inplace --ExecutePreprocessor.kernel_name=ment --execute $filename;
   fi
 done
 
