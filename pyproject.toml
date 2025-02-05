@@ -1,6 +1,6 @@
 [project]
 name = "ment"
-version = "1.0.0"
+version = "1.0.1"
 requires-python = ">=3.11"
 dependencies = [
     "numpy",
@@ -12,7 +12,7 @@ dependencies = [
 test = [
     "matplotlib>=3.9,<3.10",
     "ultraplot>=1.0.5",
-    "psdist>=2.0.1",
+    "psdist>=2.1.4",
 ]
 
 [build-system]
