@@ -14,6 +14,8 @@ from tqdm import tqdm
 from .diag import Histogram1D
 from .diag import HistogramND
 from .grid import get_grid_points
+from .prior import UniformPrior
+from .prior import GaussianPrior
 from .sim import IdentityTransform
 from .sim import LinearTransform
 from .utils import wrap_tqdm
@@ -232,6 +234,8 @@ class MENT:
 
     def unnormalize(self, z: np.ndarray) -> np.ndarray:
         """Unnormalize coordinates z: x = Vz."""
+        if self.unnorm_transform is None:
+            self.unnorm_transform = IdentityTransform()
         return self.unnorm_transform(z)
 
     def normalize(self, x: np.ndarray) -> np.ndarray:
@@ -252,12 +256,11 @@ class MENT:
         prob = np.ones(z.shape[0])
         for index, transform in enumerate(self.transforms):
             u = transform(x)
-            for diagnostic, lagrange_function in zip(
-                self.diagnostics[index], self.lagrange_functions[index]
-            ):
-                prob *= lagrange_function(diagnostic.project(u))
-        prob *= self.prior.prob(z)
-
+            for diag, lfunc in zip(self.diagnostics[index], self.lagrange_functions[index]):
+                prob *= lfunc(diag.project(u))
+                
+        prob = prob * self.prior.prob(z)
+        
         if squeeze:
             prob = np.squeeze(prob)
         return prob
@@ -267,7 +270,6 @@ class MENT:
 
         Key word arguments go to `self.sampler`.
         """
-
         def prob_func(z: np.ndarray) -> np.ndarray:
             return self.prob(z, squeeze=False)
 
@@ -287,9 +289,7 @@ class MENT:
         diagnostic = self.diagnostics[index][diag_index]
         return diagnostic.get_grid_points()
 
-    def get_integration_points(
-        self, index: int, diag_index: int, method: str = "grid"
-    ) -> np.ndarray:
+    def get_integration_points(self, index: int, diag_index: int, method: str = "grid") -> np.ndarray:
         """Return integration points for specific diagnnostic."""
         if self.integration_points is not None:
             return self.integration_points
@@ -421,7 +421,10 @@ class MENT:
         return diagnostic.copy()
 
     def gauss_seidel_step(
-        self, learning_rate: float = 1.0, thresh: float = 0.0, thresh_type: str = "abs"
+        self, 
+        learning_rate: float = 1.0, 
+        thresh: float = 0.0, 
+        thresh_type: str = "abs",
     ) -> None:
         """Perform Gauss-Seidel update.
 
