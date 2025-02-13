@@ -41,8 +41,7 @@ pip install -e '.[test]'
 
 ## Examples
 
-Several examples are included in the [examples](https://github.com/austin-hoover/ment/tree/main/examples) folder. See `examples/simple.py` for the basic setup.
-Documentation in progress.
+Several examples are included in the [examples](https://github.com/austin-hoover/ment/tree/main/examples) folder. See `examples/rec_simple.py` for the basic setup. Documentation in progress.
 
 
 ## References
