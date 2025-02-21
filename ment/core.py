@@ -445,13 +445,10 @@ class MENT:
                 if self.verbose:
                     print(f"diagnostic={diag_index}")
 
-                # Simulate measurements
-                self.simulate_single(index=index, diag_index=diag_index)
-
                 # Get lagrange multpliers, measured and simulated projections
-                lagrange_function = self.lagrange_functions[index][diag_index]
+                hist_pred = self.simulate_single(index=index, diag_index=diag_index)
                 hist_meas = self.projections[index][diag_index]
-                hist_pred = self.diagnostics[index][diag_index]
+                lagrange_function = self.lagrange_functions[index][diag_index]
 
                 # Unravel
                 values_lagr = lagrange_function.values.copy()
