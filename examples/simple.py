@@ -26,7 +26,6 @@ x_true = x_true + rng.normal(size=x_true.shape, scale=0.25)
 # Create a list of transforms. Each transform is a function with the call signature
 # `transform(x: np.ndarray) -> np.ndarray`.
 
-
 def rotation_matrix(angle: float) -> np.ndarray:
     M = [[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]]
     M = np.array(M)
@@ -52,18 +51,17 @@ for transform in transforms:
 
 # Here we simulate the projections; in real life the projections would be
 # measured.
-projections = ment.sim.copy_histograms(diagnostics)
-projections = ment.sim.simulate(x_true, transforms, diagnostics)
+projections = ment.simulate(x_true, transforms, diagnostics)
 
 
 # Reconstruction model
 # --------------------------------------------------------------------------------------
 
 # Define prior distribution for relative entropy calculation
-prior = ment.prior.GaussianPrior(ndim=2, scale=[1.0, 1.0])
+prior = ment.GaussianPrior(ndim=2, scale=[1.0, 1.0])
 
 # Define particle sampler (if mode="sample")
-sampler = ment.samp.GridSampler(
+sampler = ment.GridSampler(
     grid_limits=(2 * [(-4.0, 4.0)]),
     grid_shape=(128, 128),
 )
@@ -98,15 +96,17 @@ def plot_model(model):
     x_pred = model.sample(100_000)
 
     # Plot sim vs. measured profiles
-    projections_true = ment.sim.copy_histograms(model.projections)
-    projections_true = ment.utils.unravel(projections_true)
-
-    projections_pred = ment.sim.copy_histograms(model.diagnostics)
-    projections_pred = ment.sim.simulate(x_pred, transforms, projections_pred)
-    projections_pred = ment.utils.unravel(projections_pred)
+    projections_true = ment.unravel(model.projections)
+    projections_pred = ment.unravel(
+        ment.simulate(x_pred, model.transforms, model.diagnostics)
+    )
 
     fig, axs = plt.subplots(
-        ncols=nmeas, figsize=(11.0, 1.0), sharey=True, sharex=True, constrained_layout=True
+        ncols=nmeas, 
+        figsize=(11.0, 1.0), 
+        sharey=True,
+        sharex=True,
+        constrained_layout=True
     )
     for i, ax in enumerate(axs):
         values_pred = projections_pred[i].values
