@@ -332,13 +332,13 @@ class MENT:
 
     def simulate(self) -> list[list[Histogram]]:
         """Simulate all measurements."""
-        diagnostics_copy = []
+        diagnostic_copies = []
         for index in range(len(self.diagnostics)):
-            diagnostics_copy.append([])
+            diagnostic_copies.append([])
             for diag_index in range(len(self.diagnostics[index])):
                 diagnostic_copy = self.simulate_single(index, diag_index)
-                diagnostics_copy[-1].append(diagnostic_copy)
-        return diagnostics_copy
+                diagnostic_copies[-1].append(diagnostic_copy)
+        return diagnostic_copies
 
     def simulate_single(self, index: int, diag_index: int) -> Histogram:
         """Simulate a single measurement.
@@ -357,28 +357,29 @@ class MENT:
         """
         transform = self.transforms[index]
         diagnostic = self.diagnostics[index][diag_index]
-
-        if self.mode in ["sample", "forward"]:
-            return diagnostic(transform(self.unnormalize(self.sample(self.nsamp))))
-
-        # Otherwise use numerical integration.
         diagnostic.values *= 0.0
+        
+        values_proj = diagnostic.values.copy()
+        
+        if self.mode in ["sample", "forward"]:
+            values_proj = diagnostic(transform(self.unnormalize(self.sample(self.nsamp))))
 
-        projection_axis = diagnostic.axis
-        if type(projection_axis) is int:
-            projection_axis = (projection_axis,)
-        projection_ndim = len(projection_axis)
+        elif self.mode in ["integrate", "backward"]:
+            # Get projection grid axis.
+            projection_axis = diagnostic.axis
+            if type(projection_axis) is int:
+                projection_axis = (projection_axis,)
+            projection_ndim = len(projection_axis)
 
-        integration_axis = [axis for axis in range(self.ndim) if axis not in projection_axis]
-        integration_axis = tuple(integration_axis)
-        integration_ndim = len(integration_axis)
-        integration_limits = self.integration_limits[index][diag_index]
+            # Get integration grid axis and limits.
+            integration_axis = [axis for axis in range(self.ndim) if axis not in projection_axis]
+            integration_axis = tuple(integration_axis)
+            integration_ndim = len(integration_axis)
+            integration_limits = self.integration_limits[index][diag_index]
 
-        projection_points = self.get_projection_points(index, diag_index)
-        integration_points = self.get_integration_points(index, diag_index)
-
-        if self.mode in ["integrate", "backward"]:
-            # [To do] transport entire grid at once (okay in 2D problems)
+            # Get points on integration and projection grids.
+            projection_points = self.get_projection_points(index, diag_index)
+            integration_points = self.get_integration_points(index, diag_index)
 
             # Initialize array of integration points (u).
             u = np.zeros((integration_points.shape[0], self.ndim))
