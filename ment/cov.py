@@ -46,9 +46,9 @@ def norm_matrix(S: np.ndarray, scale: bool = False, block_diag: bool = False) ->
     ndim = S.shape[0]
     V_inv = np.eye(ndim)
     if block_diag:
-        V_inv = _norm_matrix(S, scale=scale)
-    else:
         V_inv = _norm_matrix_block_diag(S, scale=scale)
+    else:
+        V_inv = _norm_matrix(S, scale=scale)
     return V_inv
 
 
