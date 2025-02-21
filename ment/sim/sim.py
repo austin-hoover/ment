@@ -86,11 +86,12 @@ copy_projections = copy_histograms
 def simulate(
     x: np.ndarray, transforms: list[Callable], diagnostics: list[list[Histogram]]
 ) -> list[list[Histogram]]:
+    diagnostics_copy = copy_diagnostics(diagnostics)
     for index, transform in enumerate(transforms):
         u = transform(x)
-        for diagnostic in diagnostics[index]:
+        for diagnostic in diagnostics_copy[index]:
             diagnostic(u)
-    return copy_diagnostics(diagnostics)
+    return diagnostics_copy
 
 
 def simulate_with_diag_update(
@@ -109,10 +110,10 @@ def simulate_with_diag_update(
         for key, val in kws.items():
             setattr(diagnostic, key, val)
 
-    simulate(x, transforms, diagnostics)
+    diagnostics_copy = simulate(x, transforms, diagnostics)
 
     for diagnostic, kws in zip(unravel(diagnostics), kws_list_old):
         for key, val in kws.items():
             setattr(diagnostic, key, val)
 
-    return copy_diagnostics(diagnostics)
+    return diagnostics_copy
