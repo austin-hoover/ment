@@ -170,30 +170,40 @@ def sample_metropolis_hastings(
     return points
 
 
-class MetropolisHastingsSampler:
+class Sampler:
+    def __init__(self, ndim: int, seed: int = None, verbose: int = 0, debug: bool = False) -> None:
+        self.ndim = ndim
+        self.seed = seed
+        self.verbose = verbose
+        self.debug = debug
+        
+        self.rng = np.random.default_rng(seed)
+
+    def sample(self, prob_func: Callable, size: int) -> np.ndarray:
+        raise NotImplementedError
+
+    def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
+        return self.sample(prob_func, size)
+
+
+class MetropolisHastingsSampler(Sampler):
     def __init__(
         self,
-        ndim: int,
         chains: int = 10,
         burnin: int = 1_000,
         start: np.ndarray = None,
         proposal_cov: np.ndarray = None,
         shuffle: bool = False,
-        verbose: bool = False,
-        debug: bool = False,
-        seed: int = None,
+        **kwargs
     ) -> None:
-        self.ndim = ndim
+        super().__init__(**kwargs)
         self.chains = chains
         self.burnin = burnin
         self.start = start
         self.proposal_cov = proposal_cov
         self.shuffle = shuffle
-        self.verbose = verbose
-        self.debug = debug
-        self.seed = seed
-        
-    def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
+                
+    def sample(self, prob_func: Callable, size: int) -> np.ndarray:
         size = int(math.ceil(size / float(self.chains)))
         x = sample_metropolis_hastings(
             prob_func,
@@ -209,25 +219,24 @@ class MetropolisHastingsSampler:
             seed=self.seed,
         )
         if self.shuffle:
-            np.random.shuffle(x)
+            self.rng.shuffle(x)
         return x[:size]
 
 
-class GridSampler:
+class GridSampler(Sampler):
     def __init__(
         self,
         grid_limits: list[tuple[float, float]],
         grid_shape: tuple[int, ...],
         noise: float = 0.0,
         store_grid_points: bool = True,
-        seed: int = None,
+        **kwargs
     ) -> None:
+        super().__init__(ndim=len(grid_limits), **kwargs)
         self.grid_shape = grid_shape
         self.grid_limits = grid_limits
-        self.ndim = len(grid_limits)
         self.noise = noise
         self.store_grid_points = store_grid_points
-        self.rng = np.random.default_rng(seed)
 
         self.grid_edges = [
             np.linspace(
@@ -245,17 +254,17 @@ class GridSampler:
             return self.grid_points
         grid_points = get_grid_points(self.grid_coords)
         if self.store_grid_points:
-            self.grid_points = grid_points
+            self.grid_points = grid_points            
         return grid_points
 
-    def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
+    def sample(self, prob_func: Callable, size: int) -> np.ndarray:
         prob = prob_func(self.get_grid_points())
         prob = np.reshape(prob, self.grid_shape)
         x = sample_hist(prob, self.grid_edges, size, noise=self.noise, rng=self.rng)
         return x
 
 
-class SliceGridSampler:
+class SliceGridSampler(Sampler):
     def __init__(
         self,
         grid_limits: list[tuple[float, float]],
@@ -265,17 +274,16 @@ class SliceGridSampler:
         int_method: str = "grid",
         int_batches: int = 1,
         noise: float = 0.0,
-        verbose: bool = False,
-        seed: int = None,
+        **kwargs
     ):
+        super().__init__(ndim=len(grid_limits), **kwargs)
         self.grid_shape = grid_shape
         self.grid_limits = grid_limits
         self.ndim = len(grid_limits)
+        
         self.proj_dim = proj_dim
         self.samp_dim = self.ndim - self.proj_dim
         self.noise = noise
-        self.verbose = verbose
-        self.rng = np.random.default_rng(seed)
 
         self.grid_edges = [
             np.linspace(
@@ -287,21 +295,21 @@ class SliceGridSampler:
         ]
         self.grid_coords = [0.5 * (e[:-1] + e[1:]) for e in self.grid_edges]
 
-        # Projection grid.
+        # Projection grid
         self.proj_axis = tuple(range(self.proj_dim))
         self.proj_grid_shape = self.grid_shape[: self.proj_dim]
         self.proj_grid_edges = self.grid_edges[: self.proj_dim]
         self.proj_grid_coords = self.grid_coords[: self.proj_dim]
         self.proj_grid_points = get_grid_points(self.proj_grid_coords)
 
-        # Sampling grid.
+        # Sampling grid
         self.samp_axis = tuple(range(self.proj_dim, self.ndim))
         self.samp_grid_shape = self.grid_shape[self.proj_dim :]
         self.samp_grid_edges = self.grid_edges[self.proj_dim :]
         self.samp_grid_coords = self.grid_coords[self.proj_dim :]
         self.samp_grid_points = get_grid_points(self.samp_grid_coords)
 
-        # Integration limits (integration axis = sampling axis).
+        # Integration limits (integration axis = sampling axis)
         self.int_size = int_size
         self.int_method = int_method
         self.int_batches = int_batches
@@ -349,7 +357,7 @@ class SliceGridSampler:
         rho = np.reshape(rho, self.proj_grid_shape)
         return rho
 
-    def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
+    def sample(self, prob_func: Callable, size: int) -> np.ndarray:
         # Compute projection and resample to find number of particles in each projected bin.
         if self.verbose:
             print("Projecting")
