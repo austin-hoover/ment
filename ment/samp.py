@@ -74,6 +74,9 @@ def sample_metropolis_hastings(
     rng = np.random.default_rng(seed)
     size = size + burnin
 
+    if size < chains:
+        raise ValueError("samples < chains")
+
     # Sample points from the Gaussian proposal distribution. (The means will be updated
     # during the random walk.)
     proposal_mean = np.zeros(ndim)
