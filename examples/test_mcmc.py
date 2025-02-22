@@ -27,6 +27,7 @@ parser.add_argument("--chains", type=int, default=1)
 parser.add_argument("--burnin", type=int, default=1000)
 parser.add_argument("--prop-scale", type=float, default=1.0)
 parser.add_argument("--start-scale", type=float, default=1.0)
+parser.add_argument("--plot", type=int, default=0)
 args = parser.parse_args()
 
 
@@ -94,17 +95,18 @@ x_samp = sampler(prob_func, size=args.nsamp)
 
 
 # Plot results
-grid = psv.CornerGrid(ndim, corner=True, figwidth=(1.25 * ndim))
-grid.set_limits(ps.limits(x_true, rms=2.5))
-grid.plot_hist(hist, cmap="mono")
-grid.plot(x_samp[:, :], kind="hist", alpha=0.0, diag_kws=dict(color="red"))
-grid.plot(
-    x_samp[:1000, :],
-    diag=False,
-    kind="scatter",
-    color="red",
-    s=0.25,
-)
-plt.show()
+if args.plot:
+    grid = psv.CornerGrid(ndim, corner=True, figwidth=(1.25 * ndim))
+    grid.set_limits(ps.limits(x_true, rms=2.5))
+    grid.plot_hist(hist, cmap="mono")
+    grid.plot(x_samp[:, :], kind="hist", alpha=0.0, diag_kws=dict(color="red"))
+    grid.plot(
+        x_samp[:1000, :],
+        diag=False,
+        kind="scatter",
+        color="red",
+        s=0.25,
+    )
+    plt.show()
 
 
