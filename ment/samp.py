@@ -75,9 +75,9 @@ def sample_metropolis_hastings(
         Function returning probability density p(x) at points x. The function must be
         vectorized so that x is a batch of points of shape (nchains, ndim).
     size : int
-        The number of samples (excluding burn-in).
+        The number of samples per chain (excluding burn-in).
     chains : int
-        Number of parallel sampling chains.
+        Number of sampling chains.
     burnin : int
         Number of burnin iterations (applies to each chain).
     start ; np.ndarray, shape
@@ -88,7 +88,7 @@ def sample_metropolis_hastings(
         distribution.
     merge : bool
         Whether to merge the sampling chains. If the chains are merged, the return
-        array has shape (size, ndim). Otherwise if has shape (size / chains, chains, ndim).
+        array has shape (size * chains, ndim). Otherwise if has shape (size, chains, ndim).
     seed : int
         Seed used in all random number generators.
     verbose : int
@@ -100,13 +100,10 @@ def sample_metropolis_hastings(
     -------
     ndarray
         Sampled points with burn-in points discarded. Shape is (size, ndim) if merge=True
-        or (size / chains, chains, ndim) if merge=False.
+        or (size * chains, chains, ndim) if merge=False.
     """  
     rng = np.random.default_rng(seed)
     size = size + burnin
-
-    if size < chains:
-        raise ValueError("samples < chains")
 
     # Sample points from the Gaussian proposal distribution. (The means will be updated
     # during the random walk.)
