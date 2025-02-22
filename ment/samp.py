@@ -1,5 +1,6 @@
 import math
 import time
+import warnings
 from typing import Callable
 from typing import List
 from typing import Tuple
@@ -81,7 +82,8 @@ def sample_metropolis_hastings(
     burnin : int
         Number of burnin iterations (applies to each chain).
     start ; np.ndarray, shape
-        An array of shape (chains, ndim) giving the starting point of each chain.
+        An array of shape (chains, ndim) giving the starting point of each chain. All
+        start points must be in regions of nonzero probability density.
     proposal_cov : ndarray
         We use a Gaussian proposal distribution centered on the current point in
         the random walk. This variable is the covariance matrix of the Gaussian
@@ -105,7 +107,11 @@ def sample_metropolis_hastings(
     rng = np.random.default_rng(seed)
     size = size + burnin
 
-    # Sample points from the Gaussian proposal distribution. (The means will be updated
+    # Initialize list of points. From now on we each "point" is really a batch of 
+    # size (nchains, ndim). Burnin-points will be discarded later.
+    points = np.empty((size, chains, ndim)) 
+
+    # Sample proposal points from a Gaussian distribution. (The means will be updated
     # during the random walk.)
     proposal_mean = np.zeros(ndim)
     if proposal_cov is None:
@@ -115,27 +121,31 @@ def sample_metropolis_hastings(
         proposal_mean, proposal_cov, size=(size - 1, chains)
     )
 
-    # Sample starting point for each chain. The starting point should not matter if
-    # each chain converges. Here we sample from the proposal distribution centered
-    # at the origin.
-    start_point = start
-    if start_point is None:
-        start_point = rng.multivariate_normal(proposal_mean, proposal_cov, size=chains)
-        start_point *= 0.25
+    # Set starting point for each chain. If none is provided, sample from the proposal
+    # distribution centered at the origin.
+    if start is None:
+        start = rng.multivariate_normal(proposal_mean, proposal_cov, size=chains)
+        start *= 0.50
+        
+    points[0] = start
 
-    # Initialize list of points. From now on we each "point" is really a batch of 
-    # size (nchains, ndim).
-    points = np.empty((size, chains, ndim)) 
-    points[0] = start_point
-
-    # Sample from uniform distribution for accept/reject calculations.
-    random_uniform = rng.uniform(size=(size - 1, chains))
-
-    # Execute random walks.
+    # Raise an error if any points give nan probability.
     prob = prob_func(points[0])
+    if np.any(np.logical_or(np.equal(prob, 0.0), np.isnan(prob))):
+        n = np.count_nonzero(np.isnan(prob))
+        if n > 0:
+            raise ValueError(f"Invalid starting point! p(x) = NaN at {n} points!")
+
+    # Raise an error if any points start in a region of zero probability density.
+    n = np.count_nonzero(prob == 0)
+    if n > 0:
+        raise ValueError(f"Invalid starting point! p(x) = 0 at {n} points!")
+
+    # Execute random walks
+    random_uniform = rng.uniform(size=(size - 1, chains))
     accept = np.zeros(chains)
     n_total_accepted = 0
-    
+
     for i in wrap_tqdm(range(1, size), verbose):
         proposal_point = points[i - 1] + proposal_points[i - 1]
         proposal_prob = prob_func(proposal_point)
