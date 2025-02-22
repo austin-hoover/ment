@@ -60,8 +60,6 @@ def sample_metropolis_hastings(
     burnin: int = 10_000,
     start: np.ndarray = None,
     proposal_cov: np.ndarray = None,
-    rmax: float = np.inf,
-    pad: float = 1.00e-14,
     merge: bool = True,
     seed: int = None,
     verbose: int = 0,
@@ -70,6 +68,39 @@ def sample_metropolis_hastings(
     """Vectorized Metropolis-Hastings.
 
     https://colindcarroll.com/2019/08/18/very-parallel-mcmc-sampling/
+
+    Parameters
+    ----------
+    prob_func : Callable
+        Function returning probability density p(x) at points x. The function must be
+        vectorized so that x is a batch of points of shape (nchains, ndim).
+    size : int
+        The number of samples (excluding burn-in).
+    chains : int
+        Number of parallel sampling chains.
+    burnin : int
+        Number of burnin iterations (applies to each chain).
+    start ; np.ndarray, shape
+        An array of shape (chains, ndim) giving the starting point of each chain.
+    proposal_cov : ndarray
+        We use a Gaussian proposal distribution centered on the current point in
+        the random walk. This variable is the covariance matrix of the Gaussian
+        distribution.
+    merge : bool
+        Whether to merge the sampling chains. If the chains are merged, the return
+        array has shape (size, ndim). Otherwise if has shape (size / chains, chains, ndim).
+    seed : int
+        Seed used in all random number generators.
+    verbose : int
+        Whether to show progress bar.
+    debug : bool
+        Whether to print iteration number and acceptance rate.
+
+    Returns
+    -------
+    ndarray
+        Sampled points with burn-in points discarded. Shape is (size, ndim) if merge=True
+        or (size / chains, chains, ndim) if merge=False.
     """  
     rng = np.random.default_rng(seed)
     size = size + burnin
@@ -143,7 +174,7 @@ class MetropolisHastingsSampler:
         shuffle: bool = False,
         verbose: bool = False,
         debug: bool = False,
-        pad: float = 1.00e-14,
+        seed: int = None,
     ) -> None:
         self.ndim = ndim
         self.chains = chains
@@ -153,8 +184,8 @@ class MetropolisHastingsSampler:
         self.shuffle = shuffle
         self.verbose = verbose
         self.debug = debug
-        self.pad = pad
-
+        self.seed = seed
+        
     def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
         x = sample_metropolis_hastings(
             prob_func,
@@ -167,7 +198,7 @@ class MetropolisHastingsSampler:
             merge=True,
             verbose=self.verbose,
             debug=self.debug,
-            pad=self.pad,
+            seed=self.seed,
         )
         if self.shuffle:
             np.random.shuffle(x)
