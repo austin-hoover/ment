@@ -7,7 +7,6 @@ from typing import TypeAlias
 from typing import Union
 
 import numpy as np
-import psdist as ps
 import scipy.interpolate
 from tqdm import tqdm
 
