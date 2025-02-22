@@ -184,10 +184,11 @@ class MetropolisHastingsSampler:
         self.seed = seed
         
     def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
+        size = int(math.ceil(size / float(self.chains)))
         x = sample_metropolis_hastings(
             prob_func,
             ndim=self.ndim,
-            size=(size // self.chains),
+            size=size,
             chains=self.chains,
             burnin=self.burnin,
             start=self.start,
@@ -199,7 +200,7 @@ class MetropolisHastingsSampler:
         )
         if self.shuffle:
             np.random.shuffle(x)
-        return x
+        return x[:size]
 
 
 class GridSampler:
