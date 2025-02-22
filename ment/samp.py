@@ -60,48 +60,72 @@ def sample_metropolis_hastings(
     burnin: int = 10_000,
     start: np.ndarray = None,
     proposal_cov: np.ndarray = None,
+    rmax: float = np.inf,
     pad: float = 1.00e-14,
     merge: bool = True,
-    verbose: bool = False,
+    seed: int = None,
+    verbose: int = 0,
+    debug: bool = False,
 ) -> np.ndarray:
     """Vectorized Metropolis-Hastings.
 
     https://colindcarroll.com/2019/08/18/very-parallel-mcmc-sampling/
-    """
+    """  
+    rng = np.random.default_rng(seed)
+    size = size + burnin
 
-    def log_prob_func(x):
-        return np.log(prob_func(x) + pad)
-
+    # Sample points from the Gaussian proposal distribution. (The means will be updated
+    # during the random walk.)
+    proposal_mean = np.zeros(ndim)
     if proposal_cov is None:
         proposal_cov = np.eye(ndim)
-    proposal_mean = np.zeros(ndim)
+        
+    proposal_points = rng.multivariate_normal(
+        proposal_mean, proposal_cov, size=(size - 1, chains)
+    )
 
-    if start is None:
-        start = np.random.multivariate_normal(proposal_mean, proposal_cov, size=chains)
-        start = start * 0.25
+    # Sample starting point for each chain. The starting point should not matter if
+    # each chain converges. Here we sample from the proposal distribution centered
+    # at the origin.
+    start_point = start
+    if start_point is None:
+        start_point = rng.multivariate_normal(proposal_mean, proposal_cov, size=chains)
+        start_point *= 0.25
 
-    size += burnin
+    # Initialize list of points. From now on we each "point" is really a batch of 
+    # size (nchains, ndim).
+    points = np.empty((size, chains, ndim)) 
+    points[0] = start_point
 
-    points = np.empty((size, chains, ndim))
-    points[0] = start
-    current_log_prob = log_prob_func(start)
+    # Sample from uniform distribution for accept/reject calculations.
+    random_uniform = rng.uniform(size=(size - 1, chains))
 
-    proposals = np.random.multivariate_normal(proposal_mean, proposal_cov, size=(size - 1, chains))
-    log_unifs = np.log(np.random.rand(size - 1, chains))
-
+    # Execute random walks.
+    prob = prob_func(points[0])
+    accept = np.zeros(chains)
+    n_total_accepted = 0
+    
     for i in wrap_tqdm(range(1, size), verbose):
-        proposal = proposals[i - 1] + points[i - 1]
-        proposal_log_prob = log_prob_func(proposal)
-        accept = log_unifs[i - 1] < (proposal_log_prob - current_log_prob)
+        proposal_point = points[i - 1] + proposal_points[i - 1]
+        proposal_prob = prob_func(proposal_point)
+        accept = proposal_prob > prob * random_uniform[i - 1]
+    
+        if debug and (i >= burnin):
+            n_total_accepted += np.count_nonzero(accept)
+            n_total = int(chains * ((i + 1) - burnin))
+            acceptance_rate = n_total_accepted / n_total
+            print("debug {:05.0f} acceptance_rate={:0.4f}".format(i, acceptance_rate))
 
         points[i] = points[i - 1]
-        points[i][accept] = proposal[accept]
-
-        current_log_prob[accept] = proposal_log_prob[accept]
+        points[i][accept] = proposal_point[accept]
+        prob[accept] = proposal_prob[accept]
 
     points = points[burnin:]
+    
+    # Option to return unmerged chains:
     if merge:
         points = points.reshape(points.shape[0] * points.shape[1], points.shape[2])
+    
     return points
 
 
@@ -115,6 +139,7 @@ class MetropolisHastingsSampler:
         proposal_cov: np.ndarray = None,
         shuffle: bool = False,
         verbose: bool = False,
+        debug: bool = False,
         pad: float = 1.00e-14,
     ) -> None:
         self.ndim = ndim
@@ -124,6 +149,7 @@ class MetropolisHastingsSampler:
         self.proposal_cov = proposal_cov
         self.shuffle = shuffle
         self.verbose = verbose
+        self.debug = debug
         self.pad = pad
 
     def __call__(self, prob_func: Callable, size: int) -> np.ndarray:
@@ -137,6 +163,7 @@ class MetropolisHastingsSampler:
             proposal_cov=self.proposal_cov,
             merge=True,
             verbose=self.verbose,
+            debug=self.debug,
             pad=self.pad,
         )
         if self.shuffle:
