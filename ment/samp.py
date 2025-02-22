@@ -204,11 +204,10 @@ class MetropolisHastingsSampler(Sampler):
         self.shuffle = shuffle
                 
     def sample(self, prob_func: Callable, size: int) -> np.ndarray:
-        size = int(math.ceil(size / float(self.chains)))
         x = sample_metropolis_hastings(
             prob_func,
             ndim=self.ndim,
-            size=size,
+            size=int(math.ceil(size / float(self.chains))),
             chains=self.chains,
             burnin=self.burnin,
             start=self.start,
