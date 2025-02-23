@@ -55,6 +55,15 @@ class HistogramND:
         self.thresh = thresh
         self.thresh_type = thresh_type
 
+    def sample(self, size: int, noise: float = 0.0) -> np.ndarray:
+        return _sample_grid(values=self.values, edges=self.edges, size=size, noise=noise)
+
+    def cov(self) -> np.ndarray:
+        if self.ndim > 2:
+            raise NotImplementedError
+            
+        return _get_hist_cov_2d(self)
+
     def copy(self) -> Self:
         return copy.deepcopy(self)
 
@@ -146,6 +155,21 @@ class Histogram1D:
         self.thresh = thresh
         self.thresh_type = thresh_type
 
+    def sample(self, size: int, noise: float = 0.0) -> np.ndarray:
+        return _sample_grid(values=self.values, edges=self.edges, size=size, noise=noise)
+
+    def std(self) -> float:
+        values_sum = np.sum(self.values)
+        if values_sum <= 0.0:
+            raise ValueError("Histogram values are zero.")
+
+        x = np.copy(self.coords)
+        f = np.copy(self.values)
+        x_avg = np.average(x, weights=f)   
+        x_var = np.average((x - x_avg)**2, weights=f)
+        x_std = np.sqrt(x_var)
+        return x_std
+        
     def copy(self) -> Self:
         return copy.deepcopy(self)
 
@@ -188,3 +212,49 @@ class Histogram1D:
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return self.bin(x)
+
+
+def _sample_grid(values: np.ndarray, edges: list[np.ndarray], size: int = 100, noise: float = 0.0) -> np.ndarray:
+    if np.ndim(edges) == 1:
+        edges= [edges]
+        
+    idx = np.flatnonzero(values)
+    pdf = values.ravel()[idx]
+    pdf = pdf / np.sum(pdf)
+    idx = np.random.choice(idx, size, replace=True, p=pdf)
+    idx = np.unravel_index(idx, shape=values.shape)
+    lb = [edges[axis][idx[axis]] for axis in range(values.ndim)]
+    ub = [edges[axis][idx[axis] + 1] for axis in range(values.ndim)]
+
+    points = np.squeeze(np.random.uniform(lb, ub).T)
+    if noise:
+        for axis in range(points.shape[1]):
+            delta = ub[axis] - lb[axis]
+            points[:, axis] += (
+                noise * 0.5 * np.random.uniform(-delta, delta, size=points.shape[0])
+            )
+    return points
+
+
+def _get_hist_cov_2d(hist: HistogramND) -> np.ndarray:
+    values = hist.values
+    coords = hist.coords
+    ndim = values.ndim
+        
+    S = np.zeros((ndim, ndim))
+    
+    values_sum = np.sum(values)
+    if values_sum <= 0.0:
+        return S
+
+    COORDS = np.meshgrid(*coords, indexing="ij")
+    coords_mean = np.array([np.average(C, weights=values) for C in COORDS])
+    for i in range(ndim):
+        for j in range(i + 1):
+            X = COORDS[i] - coords_mean[i]
+            Y = COORDS[j] - coords_mean[j]
+            EX = np.sum(values * X) / values_sum
+            EY = np.sum(values * Y) / values_sum
+            EXY = np.sum(values * X * Y) / values_sum
+            S[i, j] = S[j, i] = EXY - EX * EY
+    return S
