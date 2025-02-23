@@ -193,12 +193,14 @@ class Sampler:
 class MetropolisHastingsSampler(Sampler):
     def __init__(
         self,
-        chains: int = 10,
-        burnin: int = 1_000,
+        chains: int = 1,
+        burnin: int = 1000,
         start: np.ndarray = None,
         proposal_cov: np.ndarray = None,
         allow_zero_start: bool = True,
         shuffle: bool = False,
+        noise_scale: float = None,
+        noise_type: str = "uniform",
         **kwargs
     ) -> None:
         super().__init__(**kwargs)
@@ -208,6 +210,18 @@ class MetropolisHastingsSampler(Sampler):
         self.proposal_cov = proposal_cov
         self.shuffle = shuffle
         self.allow_zero_start = allow_zero_start
+
+        self.noise_scale = noise_scale
+        self.noise_type = noise_type
+
+    def add_noise(self, x: np.ndarray) -> np.ndarray:
+        x_add = np.zeros(x.shape)
+        if self.noise_type == "uniform":
+            x_add = self.rng.uniform(size=x.shape) - 0.5
+            x_add *= self.noise_scale
+        elif self.noise_type == "gaussian":
+            x_add = self.rng.normal(scale=self.noise_scale, size=x.shape)
+        return x + x_add            
                 
     def sample(self, prob_func: Callable, size: int) -> np.ndarray:
         x = sample_metropolis_hastings(
@@ -226,6 +240,8 @@ class MetropolisHastingsSampler(Sampler):
         )
         if self.shuffle:
             self.rng.shuffle(x)
+        if self.noise_scale:
+            x = self.add_noise(x)
         return x[:size]
 
 
