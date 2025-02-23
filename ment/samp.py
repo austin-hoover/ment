@@ -62,6 +62,7 @@ def sample_metropolis_hastings(
     start: np.ndarray = None,
     proposal_cov: np.ndarray = None,
     merge: bool = True,
+    allow_zero_start: bool = True,
     seed: int = None,
     verbose: int = 0,
     debug: bool = False,
@@ -91,6 +92,8 @@ def sample_metropolis_hastings(
     merge : bool
         Whether to merge the sampling chains. If the chains are merged, the return
         array has shape (size * chains, ndim). Otherwise if has shape (size, chains, ndim).
+    allow_zero_start : bool
+        If False, raise an error if any of the chains starts at a point of zero density.
     seed : int
         Seed used in all random number generators.
     verbose : int
@@ -137,9 +140,10 @@ def sample_metropolis_hastings(
             raise ValueError(f"Invalid starting point! p(x) = NaN at {n} points!")
 
     # Raise an error if any points start in a region of zero probability density.
-    n = np.count_nonzero(prob == 0)
-    if n > 0:
-        raise ValueError(f"Invalid starting point! p(x) = 0 at {n} points!")
+    if not allow_zero_start:
+        n = np.count_nonzero(prob == 0)
+        if n > 0:
+            raise ValueError(f"Invalid starting point! p(x) = 0 at {n} points!")
 
     # Execute random walks
     random_uniform = rng.uniform(size=(size - 1, chains))
@@ -193,6 +197,7 @@ class MetropolisHastingsSampler(Sampler):
         burnin: int = 1_000,
         start: np.ndarray = None,
         proposal_cov: np.ndarray = None,
+        allow_zero_start: bool = True,
         shuffle: bool = False,
         **kwargs
     ) -> None:
@@ -202,6 +207,7 @@ class MetropolisHastingsSampler(Sampler):
         self.start = start
         self.proposal_cov = proposal_cov
         self.shuffle = shuffle
+        self.allow_zero_start = allow_zero_start
                 
     def sample(self, prob_func: Callable, size: int) -> np.ndarray:
         x = sample_metropolis_hastings(
@@ -213,6 +219,7 @@ class MetropolisHastingsSampler(Sampler):
             start=self.start,
             proposal_cov=self.proposal_cov,
             merge=True,
+            allow_zero_start=self.allow_zero_start,
             verbose=self.verbose,
             debug=self.debug,
             seed=self.seed,
