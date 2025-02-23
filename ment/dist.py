@@ -270,7 +270,7 @@ class WaterBag(Distribution):
 DISTRIBUTIONS = {
     "eight-gaussians": EightGaussians,
     "galaxy": Galaxy,
-    "gaussian_mixture": GaussianMixture,
+    "gaussian-mixture": GaussianMixture,
     "hollow": Hollow,
     "kv": KV,
     "pinwheel": Pinwheel,
