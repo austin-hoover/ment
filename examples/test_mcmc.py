@@ -92,6 +92,7 @@ sampler = ment.samp.MetropolisHastingsSampler(
     seed=args.seed,
 )
 x_samp = sampler(prob_func, size=args.nsamp)
+assert x_samp.shape[0] == args.nsamp
 
 
 # Plot results
