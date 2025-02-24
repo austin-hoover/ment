@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--nmeas", type=int, default=6)
 parser.add_argument("--xmax", type=float, default=7.0)
 parser.add_argument("--bins", type=int, default=80)
-parser.add_argument("--nsamp", type=int, default=5_000)
+parser.add_argument("--nsamp", type=int, default=1000)
 args = parser.parse_args()
 
 ndim = 2

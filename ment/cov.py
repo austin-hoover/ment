@@ -5,6 +5,7 @@ from typing import Union
 from typing import TypeAlias
 import numpy as np
 import scipy.optimize
+import time
 
 from .diag import Histogram1D
 from .diag import HistogramND
@@ -235,12 +236,15 @@ class CovFitterBase:
         projections: list[list[Histogram]],
         nsamp: int,
         verbose: bool = 2,
+        seed: int = None,
     ) -> None:
         """Constructor."""
         self.ndim = ndim
         self.nsamp = nsamp
         self.verbose = verbose
+        
         self.params = None
+        self.rng = np.random.default_rng(seed)
 
         self.transforms = transforms
         self.projections = projections     
@@ -254,7 +258,10 @@ class CovFitterBase:
             if proj.ndim == 1:
                 self.moments.append(proj.std() ** 2)
             else:
-                self.moments.extend(list(np.ravel(proj.cov())))
+                _moments = proj.cov()
+                _moments = _moments[np.tril_indices(_moments.ndim)]
+                _moments = _moments.tolist()
+                self.moments.extend(_moments)
         self.moments = np.array(self.moments)
         
     def set_params(self, params: np.ndarray) -> None:
@@ -270,7 +277,7 @@ class CovFitterBase:
         size = size or self.nsamp
         cov = self.build_cov()
         mean = np.zeros(self.ndim)
-        return np.random.multivariate_normal(mean, cov, size=size)
+        return self.rng.multivariate_normal(mean, cov, size=size)
 
     def simulate(self, x: np.ndarray) -> np.ndarray:
         """Track particles and return predicted moments."""
@@ -283,7 +290,10 @@ class CovFitterBase:
                     moment = np.var(x_out_proj)
                     moments_pred.append(moment)
                 else:
-                    moments_pred.extend(np.ravel(np.cov(x_out_proj.T)))
+                    cov_matrix = np.cov(x_out_proj.T)
+                    cov_matrix_lt = cov_matrix[np.tril_indices(cov_matrix.ndim)]
+                    cov_matrix_lt = cov_matrix_lt.tolist()
+                    moments_pred.extend(cov_matrix_lt)
         return np.array(moments_pred)
         
     def loss_function(self, params: np.ndarray) -> np.ndarray:
@@ -300,11 +310,24 @@ class CovFitterBase:
 
     def fit(self, **opt_kws) -> tuple[np.ndarray, scipy.optimize.OptimizeResult]:
         """Fit parameters to data."""
+        
         def callback(intermediate_result: scipy.optimize.OptimizeResult):
             self.set_params(intermediate_result.x)
             cov_matrix = self.build_cov()
             print("cov_matrix:")
             print(np.round(cov_matrix, 5))
+
+        def is_semi_positive_definite(matrix: np.ndarray) -> bool:
+            if not np.array_equal(matrix, matrix.T):
+                return False             
+            return np.all(np.linalg.eigvals(matrix) >= 0.0)
+
+        def constraint(params: np.ndarray) -> np.ndarray:
+            return int(is_semi_positive_definite(self.build_cov()))
+            
+        constraints = [
+            scipy.optimize.NonlinearConstraint(constraint, 0.0, np.inf),
+        ]
 
         if self.verbose:
             opt_kws.setdefault("disp", True)
@@ -313,6 +336,7 @@ class CovFitterBase:
         result = scipy.optimize.differential_evolution(
             self.loss_function, 
             self.get_param_bounds(), 
+            # constraints=constraints,
             **opt_kws
         )
         
@@ -324,9 +348,12 @@ class CholeskyCovFitter(CovFitterBase):
     """Parameterizes covariance matrix using Cholesky decomposition S = LL^T.""" 
     def __init__(self, bound: float = 1.00e+15, **kwargs) -> None:
         super().__init__(**kwargs)
+        
         self.nparam = self.ndim * (self.ndim + 1) // 2
         self.params = np.zeros(self.nparam)
         self.params[self.ndim:] = 1.0
+
+        self.L = np.eye(self.ndim)
 
         self.idx_diag = (np.arange(self.ndim), np.arange(self.ndim))
         self.idx_tril = np.tril_indices(self.ndim)
@@ -337,9 +364,9 @@ class CholeskyCovFitter(CovFitterBase):
         self.lb[:self.ndim] = 1.00e-15
 
     def build_cov(self) -> np.ndarray:
-        L = np.diag(self.params[:self.ndim])
-        L[self.idx_tril_nodiag] = self.params[self.ndim:]
-        return np.matmul(L, L.T)
+        self.L[self.idx_diag] = self.params[:self.ndim]
+        self.L[self.idx_tril_nodiag] = self.params[self.ndim:]
+        return np.matmul(self.L, self.L.T)
 
     def get_param_bounds(self) -> tuple[np.ndarray, np.ndarray]:
         return scipy.optimize.Bounds(self.lb, self.ub)
