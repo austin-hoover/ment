@@ -1,5 +1,17 @@
 """Covariance matrix analysis."""
+from typing import Callable
+from typing import Optional
+from typing import Union
+from typing import TypeAlias
 import numpy as np
+import scipy.optimize
+
+from .diag import Histogram1D
+from .diag import HistogramND
+from .utils import unravel
+
+
+Histogram: TypeAlias = Union[Histogram1D, HistogramND]  # python<3.12 compatible
 
 
 def rms_ellipsoid_volume(cov_matrix: np.ndarray) -> float:
@@ -208,3 +220,133 @@ def rms_ellipse_params(
     c1 = np.sqrt(abs(sii * _cos2 + sjj * _sin2 - 2 * sij * _sin * _cos))
     c2 = np.sqrt(abs(sii * _sin2 + sjj * _cos2 + 2 * sij * _sin * _cos))
     return (c1, c2, angle)
+
+
+
+class CovFitterBase:
+    """Base class for covariance matrix fitting classes.
+
+    This class uses the Differentiable Evolution global optimization routine.
+    """
+    def __init__(
+        self,
+        ndim: int,
+        transforms: list[Callable],
+        projections: list[list[Histogram]],
+        nsamp: int,
+        verbose: bool = 2,
+    ) -> None:
+        """Constructor."""
+        self.ndim = ndim
+        self.nsamp = nsamp
+        self.verbose = verbose
+        self.params = None
+
+        self.transforms = transforms
+        self.projections = projections     
+        
+        self.diagnostics = []
+        for i in range(len(projections)):
+            self.diagnostics.append([proj.copy() for proj in projections[i]])
+
+        self.moments = []
+        for proj in unravel(projections):
+            if proj.ndim == 1:
+                self.moments.append(proj.std() ** 2)
+            else:
+                self.moments.extend(list(np.ravel(proj.cov())))
+        self.moments = np.array(self.moments)
+        
+    def set_params(self, params: np.ndarray) -> None:
+        """Set covariance matrix parameters."""
+        self.params = params
+                
+    def build_cov(self) -> np.ndarray:
+        """Build covariance matrix from parameters."""
+        raise NotImplementedError
+
+    def sample(self, size: int = None) -> np.ndarray:        
+        """Sample particles from Gaussian distribution with current covariance matrix."""
+        size = size or self.nsamp
+        cov = self.build_cov()
+        mean = np.zeros(self.ndim)
+        return np.random.multivariate_normal(mean, cov, size=size)
+
+    def simulate(self, x: np.ndarray) -> np.ndarray:
+        """Track particles and return predicted moments."""
+        moments_pred = []
+        for index, transform in enumerate(self.transforms):
+            x_out = transform(x)
+            for diagnostic in self.diagnostics[index]:
+                x_out_proj = diagnostic.project(x_out)
+                if diagnostic.ndim == 1:
+                    moment = np.var(x_out_proj)
+                    moments_pred.append(moment)
+                else:
+                    moments_pred.extend(np.ravel(np.cov(x_out_proj.T)))
+        return np.array(moments_pred)
+        
+    def loss_function(self, params: np.ndarray) -> np.ndarray:
+        """Minimizes difference between predicted and measured moments."""
+        self.set_params(params)
+        y_pred = self.simulate(self.sample())
+        y_meas = self.moments
+        loss = np.mean(np.square(y_pred - y_meas))     
+        return loss
+
+    def get_param_bounds(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return (lower, upper) bounds on parameters."""
+        return None
+
+    def fit(self, **opt_kws) -> tuple[np.ndarray, scipy.optimize.OptimizeResult]:
+        """Fit parameters to data."""
+        def callback(intermediate_result: scipy.optimize.OptimizeResult):
+            self.set_params(intermediate_result.x)
+            cov_matrix = self.build_cov()
+            print("cov_matrix:")
+            print(np.round(cov_matrix, 5))
+
+        if self.verbose:
+            opt_kws.setdefault("disp", True)
+            opt_kws.setdefault("callback", callback)
+
+        result = scipy.optimize.differential_evolution(
+            self.loss_function, 
+            self.get_param_bounds(), 
+            **opt_kws
+        )
+        
+        cov_matrix = self.build_cov()
+        return cov_matrix, result
+
+
+class CholeskyCovFitter(CovFitterBase):
+    """Parameterizes covariance matrix using Cholesky decomposition S = LL^T.""" 
+    def __init__(self, bound: float = 1.00e+15, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.nparam = self.ndim * (self.ndim + 1) // 2
+        self.params = np.zeros(self.nparam)
+        self.params[self.ndim:] = 1.0
+
+        self.idx_diag = (np.arange(self.ndim), np.arange(self.ndim))
+        self.idx_tril = np.tril_indices(self.ndim)
+        self.idx_tril_nodiag = np.tril_indices(self.ndim, k=-1)
+
+        self.ub = np.full(self.nparam, bound)
+        self.lb = -self.ub
+        self.lb[:self.ndim] = 1.00e-15
+
+    def build_cov(self) -> np.ndarray:
+        L = np.diag(self.params[:self.ndim])
+        L[self.idx_tril_nodiag] = self.params[self.ndim:]
+        return np.matmul(L, L.T)
+
+    def get_param_bounds(self) -> tuple[np.ndarray, np.ndarray]:
+        return scipy.optimize.Bounds(self.lb, self.ub)
+
+
+
+
+
+
+    

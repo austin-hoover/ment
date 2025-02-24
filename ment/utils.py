@@ -15,6 +15,12 @@ import pandas as pd
 from tqdm import tqdm
 
 
+def rotation_matrix(angle: float) -> np.ndarray:
+    M = [[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]]
+    M = np.array(M)
+    return M
+
+    
 def wrap_tqdm(iterable, verbose=True):
     return tqdm(iterable) if verbose else iterable
 
