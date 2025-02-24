@@ -237,6 +237,7 @@ class CovFitterBase:
         nsamp: int,
         verbose: bool = 2,
         seed: int = None,
+        loss_scale: float = 1.0,
     ) -> None:
         """Constructor."""
         self.ndim = ndim
@@ -245,6 +246,7 @@ class CovFitterBase:
         
         self.params = None
         self.rng = np.random.default_rng(seed)
+        self.loss_scale = loss_scale
 
         self.transforms = transforms
         self.projections = projections     
@@ -274,7 +276,9 @@ class CovFitterBase:
 
     def sample(self, size: int = None) -> np.ndarray:        
         """Sample particles from Gaussian distribution with current covariance matrix."""
-        size = size or self.nsamp
+        if size is None:
+            size = self.nsamp
+        
         cov = self.build_cov()
         mean = np.zeros(self.ndim)
         return self.rng.multivariate_normal(mean, cov, size=size)
@@ -302,11 +306,12 @@ class CovFitterBase:
         y_pred = self.simulate(self.sample())
         y_meas = self.moments
         loss = np.mean(np.square(y_pred - y_meas))     
+        loss = loss * self.loss_scale
         return loss
-
+        
     def get_param_bounds(self) -> tuple[np.ndarray, np.ndarray]:
         """Return (lower, upper) bounds on parameters."""
-        return None
+        raise NotImplementedError
 
     def fit(self, **opt_kws) -> tuple[np.ndarray, scipy.optimize.OptimizeResult]:
         """Fit parameters to data."""
@@ -315,7 +320,7 @@ class CovFitterBase:
             self.set_params(intermediate_result.x)
             cov_matrix = self.build_cov()
             print("cov_matrix:")
-            print(np.round(cov_matrix, 5))
+            print(cov_matrix)
 
         def is_semi_positive_definite(matrix: np.ndarray) -> bool:
             if not np.array_equal(matrix, matrix.T):
@@ -346,7 +351,7 @@ class CovFitterBase:
 
 class CholeskyCovFitter(CovFitterBase):
     """Parameterizes covariance matrix using Cholesky decomposition S = LL^T.""" 
-    def __init__(self, bound: float = 1.00e+15, **kwargs) -> None:
+    def __init__(self, bound: float = 1.00e+15, resample: bool = True, **kwargs) -> None:
         super().__init__(**kwargs)
         
         self.nparam = self.ndim * (self.ndim + 1) // 2
@@ -354,10 +359,11 @@ class CholeskyCovFitter(CovFitterBase):
         self.params[self.ndim:] = 1.0
 
         self.L = np.eye(self.ndim)
+        self.z = self.rng.normal(size=(self.nsamp, self.ndim))
+        self.resample = resample
 
         self.idx_diag = (np.arange(self.ndim), np.arange(self.ndim))
-        self.idx_tril = np.tril_indices(self.ndim)
-        self.idx_tril_nodiag = np.tril_indices(self.ndim, k=-1)
+        self.idx_offdiag = np.tril_indices(self.ndim, k=-1)
 
         self.ub = np.full(self.nparam, bound)
         self.lb = -self.ub
@@ -365,12 +371,33 @@ class CholeskyCovFitter(CovFitterBase):
 
     def build_cov(self) -> np.ndarray:
         self.L[self.idx_diag] = self.params[:self.ndim]
-        self.L[self.idx_tril_nodiag] = self.params[self.ndim:]
+        self.L[self.idx_offdiag] = self.params[self.ndim:]
         return np.matmul(self.L, self.L.T)
 
+    def set_cov(self, cov_matrix: np.ndarray) -> None:
+        L = np.linalg.cholesky(cov_matrix)
+        self.params[:self.ndim] = L[self.idx_diag]
+        self.params[self.ndim:] = L[self.idx_offdiag]
+
+    def set_bounds(self, bound: float) -> None:
+        self.ub = np.full(self.nparam, bound)
+        self.lb = -self.ub
+        self.lb[:self.ndim] = 1.00e-15
+        
     def get_param_bounds(self) -> tuple[np.ndarray, np.ndarray]:
         return scipy.optimize.Bounds(self.lb, self.ub)
 
+    def sample(self, size: int = None) -> np.ndarray:        
+        if size is None:
+            size = self.nsamp
+
+        self.L[self.idx_diag] = self.params[:self.ndim]
+        self.L[self.idx_offdiag] = self.params[self.ndim:]
+        # x = self.rng.normal(size=(size, self.ndim))
+        # x = np.matmul(x, self.L.T)
+
+        x = np.matmul(self.z, self.L.T)
+        return x
 
 
 
