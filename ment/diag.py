@@ -91,12 +91,13 @@ class HistogramND:
     def bin(self, x: np.ndarray) -> np.ndarray:
         x_proj = self.project(x)
 
+        values = None
         if self.kde:
             estimator = scipy.stats.gaussian_kde(x_proj.T, bw_method=self.kde_bandwidth)
             grid_points = self.get_grid_points()
-            return estimator(grid_points.T).reshape(self.grid_shape)
-
-        values, _ = np.histogramdd(x_proj, bins=self.edges, density=True)
+            values = estimator(grid_points.T).reshape(self.grid_shape)
+        else:
+            values, _ = np.histogramdd(x_proj, bins=self.edges, density=True)
 
         if self.blur:
             values = scipy.ndimage.gaussian_filter(values, self.blur)
@@ -158,7 +159,7 @@ class Histogram1D:
     def sample(self, size: int, noise: float = 0.0) -> np.ndarray:
         return _sample_grid(values=self.values, edges=self.edges, size=size, noise=noise)
 
-    def std(self) -> float:
+    def var(self) -> float:
         values_sum = np.sum(self.values)
         if values_sum <= 0.0:
             raise ValueError("Histogram values are zero.")
@@ -167,8 +168,10 @@ class Histogram1D:
         f = np.copy(self.values)
         x_avg = np.average(x, weights=f)   
         x_var = np.average((x - x_avg)**2, weights=f)
-        x_std = np.sqrt(x_var)
-        return x_std
+        return x_var
+
+    def std(self) -> float:
+        return np.sqrt(self.var())
         
     def copy(self) -> Self:
         return copy.deepcopy(self)
@@ -188,14 +191,15 @@ class Histogram1D:
             return np.sum(x * self.direction, axis=1)
         return x[:, self.axis]
 
-    def bin(self, x: np.ndarray) -> np.ndarray:
+    def bin(self, x: np.ndarray) -> None:
         x_proj = self.project(x)
 
+        values = None
         if self.kde:
             estimator = scipy.stats.gaussian_kde(x_proj, bw_method=self.kde_bandwidth)
-            return estimator(self.coords)
-
-        values, _ = np.histogram(x_proj, self.edges, density=True)
+            values = estimator(self.coords)
+        else:
+            values, _ = np.histogram(x_proj, self.edges, density=True)
 
         if self.blur:
             values = scipy.ndimage.gaussian_filter(values, self.blur)
@@ -208,7 +212,6 @@ class Histogram1D:
 
         self.values = values
         self.normalize()
-        return values
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return self.bin(x)
