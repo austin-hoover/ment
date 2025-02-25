@@ -25,6 +25,7 @@ parser.add_argument("--bins", type=int, default=80)
 parser.add_argument("--nsamp", type=int, default=1000)
 parser.add_argument("--seed", type=int, default=1234)
 parser.add_argument("--iters", type=int, default=1000)
+parser.add_argument("--pop", type=int, default=5)
 parser.add_argument("--callback", type=int, default=0)
 args = parser.parse_args()
 
@@ -80,7 +81,7 @@ fitter = ment.CholeskyCovFitter(
     bound=1.00e+04,
     verbose=True,
 )
-cov_matrix, fit_results = fitter.fit(maxiter=args.iters)
+cov_matrix, fit_results = fitter.fit(maxiter=args.iters, popsize=args.pop)
 
 
 # Print results
@@ -107,13 +108,16 @@ for proj_true, proj_pred, ax in zip(projections_true, projections_pred, axs.flat
     ax.set_xticks([])
     ax.set_yticks([])
 
-    for color, proj in zip(["white", "red"], [proj_true, proj_pred]):
+    for i, proj in enumerate([proj_true, proj_pred]):
+        color = ["white", "red"][i]
+        ls = ["-", "-"][i]
+        
         cx, cy, angle = ps.cov.rms_ellipse_params(proj.cov(), axis=(0, 1))
         angle = -np.degrees(angle)
         center = (0.0, 0.0)
         cx *= 4.0
         cy *= 4.0
-        ax.add_patch(Ellipse(center, cx, cy, angle=angle, color=color, fill=False))
+        ax.add_patch(Ellipse(center, cx, cy, angle=angle, color=color, fill=False, ls=ls))
     
 plt.show()
 
