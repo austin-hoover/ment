@@ -1,3 +1,6 @@
+import os
+import pathlib
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -8,6 +11,10 @@ import ment
 ndim = 2
 nmeas = 7
 seed = 0
+
+path = pathlib.Path(__file__)
+output_dir = os.path.join("outputs", path.stem)
+os.makedirs(output_dir, exist_ok=True)
 
 
 # Ground truth distribution
@@ -113,15 +120,18 @@ def plot_model(model):
         values_true = projections_true[i].values
         ax.plot(values_pred / values_true.max(), color="lightgray")
         ax.plot(values_true / values_true.max(), color="black", lw=0.0, marker=".", ms=2.0)
-    plt.show()
+    return fig
 
 
 for epoch in range(4):
+    print("epoch =", epoch)
+
     if epoch > 0:
         model.gauss_seidel_step(learning_rate=0.90)
 
-    plot_model(model)
-
+    fig = plot_model(model)
+    fig.savefig(os.path.join(output_dir, f"fig_proj_{epoch:02.0f}.png"))
+    plt.close("all")
 
 # Plot final distribution
 x_pred = model.sample(x_true.shape[0])
@@ -130,4 +140,5 @@ fig, axs = plt.subplots(ncols=2, constrained_layout=True)
 for ax, X in zip(axs, [x_pred, x_true]):
     ax.hist2d(X[:, 0], X[:, 1], bins=55, range=[(-4.0, 4.0), (-4.0, 4.0)])
     ax.set_aspect(1.0)
-plt.show()
+fig.savefig(os.path.join(output_dir, f"fig_dist_{epoch:02.0f}.png"))
+plt.close("all")
