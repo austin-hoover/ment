@@ -1,3 +1,4 @@
+"""Fit 4D covariance matrix to 2D measurements."""
 import argparse
 from typing import Callable
 from typing import Optional
