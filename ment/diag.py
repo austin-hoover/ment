@@ -110,7 +110,7 @@ class HistogramND:
 
         self.values = values
         self.normalize()
-        return values
+        return self.values
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return self.bin(x)
@@ -191,7 +191,7 @@ class Histogram1D:
             return np.sum(x * self.direction, axis=1)
         return x[:, self.axis]
 
-    def bin(self, x: np.ndarray) -> None:
+    def bin(self, x: np.ndarray) -> np.ndarray:
         x_proj = self.project(x)
 
         values = None
@@ -212,6 +212,7 @@ class Histogram1D:
 
         self.values = values
         self.normalize()
+        return self.values
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return self.bin(x)
