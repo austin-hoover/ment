@@ -268,6 +268,7 @@ class CovFitterBase:
                 self.moments.extend(_moments)
         self.moments = np.array(self.moments)
 
+        self.epoch = 0
         self.iteration = 0
         self.loss = None
         
@@ -326,12 +327,57 @@ class CovFitterBase:
         """Fit parameters to data."""
 
         def callback_all():
+            self.epoch += 1
             if self.verbose:
-                print(f"evals={self.iteration:04.0f} loss={self.loss}")
+                print(f"evals={self.epoch:04.0f} loss={self.loss:0.4e} evals={self.iteration}")
                 print(f"cov_matrix:")
                 print(self.build_cov())
 
-        if method == "differential_evolution":   
+        if method == "min":
+            opt_kws.setdefault("options", {})
+            opt_kws["options"].setdefault("disp", True)
+            opt_kws["options"].setdefault("tol", 1.00e-15)
+            
+            bounds = self.get_param_bounds()
+            lb = bounds.lb
+            ub = bounds.ub
+
+            x0 = np.clip(self.params, lb, ub)
+            
+            result = scipy.optimize.minimize(
+                self.loss_function, 
+                x0,
+                bounds=bounds,
+                **opt_kws
+            )            
+
+        elif method == "least_squares":
+            opt_kws.setdefault("verbose", 2)
+            
+            bounds = self.get_param_bounds()
+            lb = bounds.lb
+            ub = bounds.ub
+
+            x0 = np.clip(self.params, lb, ub)
+            
+            result = scipy.optimize.least_squares(
+                self.loss_function, 
+                x0,
+                bounds=(lb, ub),
+                **opt_kws
+            )
+
+            for _ in range(10):
+                x0 = np.random.uniform(lb, ub)
+                result = scipy.optimize.least_squares(
+                    self.loss_function, 
+                    x0,
+                    bounds=(lb, ub),
+                    **opt_kws
+                )
+                print(result.fun)
+
+        elif method == "differential_evolution":   
             opt_kws.setdefault("popsize", 5)
             opt_kws.setdefault("disp", True)
             result = scipy.optimize.differential_evolution(
