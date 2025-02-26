@@ -5,6 +5,7 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import psdist as ps
+import scipy.optimize
 from matplotlib.patches import Ellipse
 
 import ment
@@ -26,8 +27,7 @@ parser.add_argument("--bins", type=int, default=80)
 parser.add_argument("--nsamp", type=int, default=1000)
 parser.add_argument("--seed", type=int, default=1234)
 parser.add_argument("--iters", type=int, default=1000)
-parser.add_argument("--pop", type=int, default=5)
-parser.add_argument("--callback", type=int, default=0)
+parser.add_argument("--method", type=str, default="differential_evolution")
 args = parser.parse_args()
 
 
@@ -73,21 +73,23 @@ projections = simulate(x_true, transforms, diagnostics)
 
 # Fit covariance matrix
 # --------------------------------------------------------------------------------------
-    
+
+# Run optimizer
 fitter = ment.CholeskyCovFitter(
     ndim=ndim, 
     transforms=transforms,
     projections=projections,
     nsamp=args.nsamp,
-    bound=1.00e+04,
+    bound=1.00e+02,
     verbose=True,
 )
-cov_matrix, fit_results = fitter.fit(maxiter=args.iters, popsize=args.pop)
+cov_matrix, fit_result = fitter.fit(method=args.method)
 
 
 # Print results
-print(cov_matrix)
-print(fit_results)
+print(fit_result)
+print(fitter.build_cov())
+
 
 # Plot results
 x = fitter.sample(100_000)
