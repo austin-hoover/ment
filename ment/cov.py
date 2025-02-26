@@ -3,9 +3,11 @@ from typing import Callable
 from typing import Optional
 from typing import Union
 from typing import TypeAlias
+import time
+
 import numpy as np
 import scipy.optimize
-import time
+from scipy.optimize import OptimizeResult
 
 from .diag import Histogram1D
 from .diag import HistogramND
@@ -265,6 +267,9 @@ class CovFitterBase:
                 _moments = _moments.tolist()
                 self.moments.extend(_moments)
         self.moments = np.array(self.moments)
+
+        self.iteration = 0
+        self.loss = None
         
     def set_params(self, params: np.ndarray) -> None:
         """Set covariance matrix parameters."""
@@ -307,43 +312,58 @@ class CovFitterBase:
         y_meas = self.moments
         loss = np.mean(np.square(y_pred - y_meas))     
         loss = loss * self.loss_scale
+
+        self.iteration += 1
+        self.loss = loss
+        
         return loss
         
     def get_param_bounds(self) -> tuple[np.ndarray, np.ndarray]:
         """Return (lower, upper) bounds on parameters."""
         raise NotImplementedError
 
-    def fit(self, **opt_kws) -> tuple[np.ndarray, scipy.optimize.OptimizeResult]:
+    def fit(self, method: str = "differential_evolution", **opt_kws) -> tuple[np.ndarray, OptimizeResult]:
         """Fit parameters to data."""
-        
-        def callback(intermediate_result: scipy.optimize.OptimizeResult):
-            self.set_params(intermediate_result.x)
-            cov_matrix = self.build_cov()
-            print("cov_matrix:")
-            print(cov_matrix)
 
-        def is_semi_positive_definite(matrix: np.ndarray) -> bool:
-            if not np.array_equal(matrix, matrix.T):
-                return False             
-            return np.all(np.linalg.eigvals(matrix) >= 0.0)
+        def callback_all():
+            if self.verbose:
+                print(f"evals={self.iteration:04.0f} loss={self.loss}")
+                print(f"cov_matrix:")
+                print(self.build_cov())
 
-        def constraint(params: np.ndarray) -> np.ndarray:
-            return int(is_semi_positive_definite(self.build_cov()))
-            
-        constraints = [
-            scipy.optimize.NonlinearConstraint(constraint, 0.0, np.inf),
-        ]
-
-        if self.verbose:
+        if method == "differential_evolution":   
+            opt_kws.setdefault("popsize", 5)
             opt_kws.setdefault("disp", True)
-            opt_kws.setdefault("callback", callback)
-
-        result = scipy.optimize.differential_evolution(
-            self.loss_function, 
-            self.get_param_bounds(), 
-            # constraints=constraints,
-            **opt_kws
-        )
+            result = scipy.optimize.differential_evolution(
+                self.loss_function, 
+                self.get_param_bounds(), 
+                callback=(lambda intermediate_result: callback_all()),
+                **opt_kws
+            )
+        elif method == "dual_annealing":
+            result = scipy.optimize.dual_annealing(
+                self.loss_function, 
+                self.get_param_bounds(), 
+                callback=(lambda x, f, context: callback_all()),
+                **opt_kws
+            )
+        elif method == "shgo":
+            result = scipy.optimize.shgo(
+                self.loss_function, 
+                self.get_param_bounds(), 
+                callback=(lambda x: callback_all()),
+                **opt_kws
+            )
+        elif method == "direct":
+            opt_kws.setdefault("vol_tol", 1.00e-100)
+            result = scipy.optimize.direct(
+                self.loss_function, 
+                self.get_param_bounds(), 
+                callback=(lambda x: callback_all()),
+                **opt_kws
+            )
+        else:
+            raise ValueError
         
         cov_matrix = self.build_cov()
         return cov_matrix, result
@@ -393,10 +413,11 @@ class CholeskyCovFitter(CovFitterBase):
 
         self.L[self.idx_diag] = self.params[:self.ndim]
         self.L[self.idx_offdiag] = self.params[self.ndim:]
-        # x = self.rng.normal(size=(size, self.ndim))
-        # x = np.matmul(x, self.L.T)
+        
+        x = self.rng.normal(size=(size, self.ndim))
+        x = np.matmul(x, self.L.T)
 
-        x = np.matmul(self.z, self.L.T)
+        # x = np.matmul(self.z, self.L.T)
         return x
 
 
