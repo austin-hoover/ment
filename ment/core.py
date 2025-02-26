@@ -153,7 +153,7 @@ class MENT:
 
         self.prior = prior
         if self.prior is None:
-            self.prior = UniformPrior(ndim, scale=100.0)
+            self.prior = UniformPrior(ndim=ndim, scale=100.0)
 
         self.unnorm_matrix = unnorm_matrix
         self.unnorm_transform = self.set_unnorm_transform(unnorm_matrix)
