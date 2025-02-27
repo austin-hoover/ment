@@ -342,7 +342,7 @@ class CovFitterBase:
                 print(self.build_cov())
 
         result = None
-        
+
         if method == "simplex":
             opt_kws.setdefault("options", {})
             opt_kws["options"].setdefault("disp", True)
@@ -384,12 +384,15 @@ class CovFitterBase:
 
         elif method == "least_squares":
             opt_kws.setdefault("verbose", 2)
+            opt_kws.setdefault("xtol", 1.00e-15)
+            opt_kws.setdefault("ftol", 1.00e-15)
+            opt_kws.setdefault("gtol", 1.00e-15)
             opt_kws.setdefault("max_nfev", iters)
 
             result = scipy.optimize.least_squares(
                 self.loss_function, 
                 self.params,
-                bounds=(self.lb, self.ub),
+                # bounds=(self.lb, self.ub),
                 **opt_kws
             )
 
@@ -420,6 +423,7 @@ class CovFitterBase:
             )
         elif method == "direct":
             opt_kws.setdefault("vol_tol", 1.00e-100)
+            opt_kws.setdefault("len_tol", 1.00e-18)
             result = scipy.optimize.direct(
                 self.loss_function, 
                 scipy.optimize.Bounds(self.lb, self.ub),
@@ -479,6 +483,37 @@ class CholeskyCovFitter(CovFitterBase):
         x = self.rng.normal(size=(size, self.ndim))
         x = np.matmul(x, self.L.T)
         return x
+
+
+class LinearCovFitter(CovFitterBase):
+    """Parameterizes linear transformation of Gaussian base distribution.
+
+    There are N x N parameters with no bounds on the parameters.
+    """
+    def __init__(self, bound: float = 1.00e+15, resample: bool = True, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.nparam = self.ndim ** 2
+        self.ub = np.full(self.nparam, +bound)
+        self.lb = np.full(self.nparam, -bound)
+        self.set_params(np.ravel(np.eye(self.ndim)))
+
+    def get_unnorm_matrix(self) -> np.ndarray:
+        return np.reshape(self.params, (self.ndim, self.ndim))
+
+    def sample(self, size: int = None) -> np.ndarray:        
+        size = size or self.nsamp
+        unnorm_matrix = self.get_unnorm_matrix()
+        x = self.rng.normal(size=(size, self.ndim))
+        x = np.matmul(x, unnorm_matrix.T)
+        return x
+
+    def build_cov(self) -> np.ndarray:
+        x = self.sample()
+        cov_matrix = np.cov(x.T)
+        return cov_matrix
+        
+    def set_cov(self, cov_matrix: np.ndarray) -> None:
+        self.set_params(np.ravel(np.linalg.cholesky(cov_matrix)))
 
 
 
