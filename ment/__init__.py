@@ -7,7 +7,9 @@ from . import samp
 from . import sim
 
 from .core import *
+from .cov import CovFitterBase
 from .cov import CholeskyCovFitter
+from .cov import LinearCovFitter
 from .diag import *
 from .grid import *
 from .prior import *
