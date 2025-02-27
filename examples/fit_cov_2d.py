@@ -22,7 +22,7 @@ parser.add_argument("--xmax", type=float, default=7.0)
 parser.add_argument("--bins", type=int, default=80)
 parser.add_argument("--nsamp", type=int, default=1000)
 parser.add_argument("--iters", type=int, default=1000)
-parser.add_argument("--pop", type=int, default=5)
+parser.add_argument("--method", type=str, default="differential_evolution")
 args = parser.parse_args()
 
 ndim = 2
@@ -76,7 +76,7 @@ fitter = ment.CholeskyCovFitter(
     bound=1.00e+06,
     verbose=True,
 )
-cov_matrix, fit_results = fitter.fit(maxiter=args.iters, popsize=args.pop)
+cov_matrix, fit_results = fitter.fit(iters=args.iters, method=args.method)
 
 
 # Print results

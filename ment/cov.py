@@ -98,9 +98,7 @@ def normalization_matrix_from_eigvecs(eigvecs: np.ndarray) -> np.ndarray:
     return np.linalg.inv(V)
 
 
-def normalization_matrix_from_twiss_2d(
-    alpha: float, beta: float, emittance: float = None
-) -> np.ndarray:
+def normalization_matrix_from_twiss_2d(alpha: float, beta: float, emittance: float = None) -> np.ndarray:
     """Return 2 x 2 normalization matrix V^-1 from Twiss parameters."""
     V = np.array([[beta, 0.0], [-alpha, 1.0]]) * np.sqrt(1.0 / beta)
     A = np.eye(2)
@@ -225,7 +223,6 @@ def rms_ellipse_params(
     return (c1, c2, angle)
 
 
-
 class CovFitterBase:
     """Base class for covariance matrix fitting classes.
 
@@ -240,15 +237,20 @@ class CovFitterBase:
         verbose: bool = 2,
         seed: int = None,
         loss_scale: float = 1.0,
+        emittance_penalty: float = 0.0,
     ) -> None:
         """Constructor."""
         self.ndim = ndim
         self.nsamp = nsamp
-        self.verbose = verbose
+        self.verbose = int(verbose)
         
         self.params = None
+        self.lb = None
+        self.ub = None
+        
         self.rng = np.random.default_rng(seed)
         self.loss_scale = loss_scale
+        self.emittance_penalty = emittance_penalty
 
         self.transforms = transforms
         self.projections = projections     
@@ -268,13 +270,13 @@ class CovFitterBase:
                 self.moments.extend(_moments)
         self.moments = np.array(self.moments)
 
-        self.epoch = 0
         self.iteration = 0
+        self.nevals = 0
         self.loss = None
         
     def set_params(self, params: np.ndarray) -> None:
         """Set covariance matrix parameters."""
-        self.params = params
+        self.params = np.clip(params, self.lb, self.ub)
                 
     def build_cov(self) -> np.ndarray:
         """Build covariance matrix from parameters."""
@@ -282,13 +284,11 @@ class CovFitterBase:
 
     def sample(self, size: int = None) -> np.ndarray:        
         """Sample particles from Gaussian distribution with current covariance matrix."""
-        if size is None:
-            size = self.nsamp
-        
-        cov = self.build_cov()
+        size = size or self.nsamp
+        cov_matrix = self.build_cov()
         mean = np.zeros(self.ndim)
-        return self.rng.multivariate_normal(mean, cov, size=size)
-
+        return self.rng.multivariate_normal(mean, cov_matrix, size=size)
+        
     def simulate(self, x: np.ndarray) -> np.ndarray:
         """Track particles and return predicted moments."""
         moments_pred = []
@@ -309,103 +309,121 @@ class CovFitterBase:
     def loss_function(self, params: np.ndarray) -> np.ndarray:
         """Minimizes difference between predicted and measured moments."""
         self.set_params(params)
-        y_pred = self.simulate(self.sample())
+        
+        x = self.sample()
+        y_pred = self.simulate(x)
         y_meas = self.moments
+        
         loss = np.mean(np.square(y_pred - y_meas))     
         loss = loss * self.loss_scale
 
-        self.iteration += 1
         self.loss = loss
+        self.nevals += 1
+
+        if self.verbose > 2:
+            print(f"loss={self.loss:0.4e} evals={self.nevals}")
         
         return loss
         
-    def get_param_bounds(self) -> tuple[np.ndarray, np.ndarray]:
-        """Return (lower, upper) bounds on parameters."""
-        raise NotImplementedError
-
-    def fit(self, method: str = "differential_evolution", **opt_kws) -> tuple[np.ndarray, OptimizeResult]:
+    def fit(
+        self, 
+        method: str = "differential_evolution", 
+        iters: int = 500,
+        **opt_kws
+    ) -> tuple[np.ndarray, OptimizeResult]:
         """Fit parameters to data."""
-
-        def callback_all():
-            self.epoch += 1
-            if self.verbose:
-                print(f"evals={self.epoch:04.0f} loss={self.loss:0.4e} evals={self.iteration}")
+        
+        def callback_base():
+            self.iteration += 1
+            if self.verbose > 0:
+                print(f"iter={self.iteration:04.0f} loss={self.loss:0.4e} evals={self.nevals}")
+            if self.verbose > 1:
                 print(f"cov_matrix:")
                 print(self.build_cov())
 
-        if method == "min":
+        result = None
+        
+        if method == "simplex":
             opt_kws.setdefault("options", {})
             opt_kws["options"].setdefault("disp", True)
-            opt_kws["options"].setdefault("tol", 1.00e-15)
-            
-            bounds = self.get_param_bounds()
-            lb = bounds.lb
-            ub = bounds.ub
+            opt_kws["options"].setdefault("maxiter", iters)
 
-            x0 = np.clip(self.params, lb, ub)
-            
             result = scipy.optimize.minimize(
-                self.loss_function, 
-                x0,
-                bounds=bounds,
-                **opt_kws
-            )            
-
-        elif method == "least_squares":
-            opt_kws.setdefault("verbose", 2)
-            
-            bounds = self.get_param_bounds()
-            lb = bounds.lb
-            ub = bounds.ub
-
-            x0 = np.clip(self.params, lb, ub)
-            
-            result = scipy.optimize.least_squares(
-                self.loss_function, 
-                x0,
-                bounds=(lb, ub),
+                self.loss_function,
+                self.params,
+                method="nelder-mead",
+                bounds=scipy.optimize.Bounds(self.lb, self.ub), 
                 **opt_kws
             )
 
-            for _ in range(10):
-                x0 = np.random.uniform(lb, ub)
-                result = scipy.optimize.least_squares(
-                    self.loss_function, 
-                    x0,
-                    bounds=(lb, ub),
-                    **opt_kws
-                )
-                print(result.fun)
+        elif method == "powell":
+            opt_kws.setdefault("options", {})
+            opt_kws["options"].setdefault("disp", True)
+            opt_kws["options"].setdefault("maxiter", iters)
+
+            result = scipy.optimize.minimize(
+                self.loss_function,
+                self.params, 
+                method="powell",
+                bounds=scipy.optimize.Bounds(self.lb, self.ub), 
+                **opt_kws
+            )
+
+        elif method == "l-bfgs-b":
+            opt_kws.setdefault("options", {})
+            opt_kws["options"].setdefault("disp", True)
+            opt_kws["options"].setdefault("maxiter", iters)
+
+            result = scipy.optimize.minimize(
+                self.loss_function,
+                self.params, 
+                method="l-bfgs-b",
+                bounds=scipy.optimize.Bounds(self.lb, self.ub), 
+                **opt_kws
+            )
+
+        elif method == "least_squares":
+            opt_kws.setdefault("verbose", 2)
+            opt_kws.setdefault("max_nfev", iters)
+
+            result = scipy.optimize.least_squares(
+                self.loss_function, 
+                self.params,
+                bounds=(self.lb, self.ub),
+                **opt_kws
+            )
 
         elif method == "differential_evolution":   
             opt_kws.setdefault("popsize", 5)
             opt_kws.setdefault("disp", True)
+            opt_kws.setdefault("maxiter", iters)
+            
             result = scipy.optimize.differential_evolution(
                 self.loss_function, 
-                self.get_param_bounds(), 
-                callback=(lambda intermediate_result: callback_all()),
+                scipy.optimize.Bounds(self.lb, self.ub),
+                callback=(lambda intermediate_result: callback_base()),
                 **opt_kws
             )
         elif method == "dual_annealing":
             result = scipy.optimize.dual_annealing(
                 self.loss_function, 
-                self.get_param_bounds(), 
-                callback=(lambda x, f, context: callback_all()),
+                scipy.optimize.Bounds(self.lb, self.ub),
+                callback=(lambda x, f, context: callback_base()),
                 **opt_kws
             )
         elif method == "shgo":
             result = scipy.optimize.shgo(
                 self.loss_function, 
-                self.get_param_bounds(), 
-                callback=(lambda x: callback_all()),
+                scipy.optimize.Bounds(self.lb, self.ub),
+                callback=(lambda x: callback_base()),
                 **opt_kws
             )
         elif method == "direct":
             opt_kws.setdefault("vol_tol", 1.00e-100)
             result = scipy.optimize.direct(
                 self.loss_function, 
-                self.get_param_bounds(), 
-                callback=(lambda x: callback_all()),
+                scipy.optimize.Bounds(self.lb, self.ub),
+                callback=(lambda x: callback_base()),
                 **opt_kws
             )
         else:
@@ -421,12 +439,9 @@ class CholeskyCovFitter(CovFitterBase):
         super().__init__(**kwargs)
         
         self.nparam = self.ndim * (self.ndim + 1) // 2
-        self.params = np.zeros(self.nparam)
-        self.params[self.ndim:] = 1.0
 
         self.L = np.eye(self.ndim)
         self.z = self.rng.normal(size=(self.nsamp, self.ndim))
-        self.resample = resample
 
         self.idx_diag = (np.arange(self.ndim), np.arange(self.ndim))
         self.idx_offdiag = np.tril_indices(self.ndim, k=-1)
@@ -434,6 +449,10 @@ class CholeskyCovFitter(CovFitterBase):
         self.ub = np.full(self.nparam, bound)
         self.lb = -self.ub
         self.lb[:self.ndim] = 1.00e-15
+
+        self.params = np.zeros(self.nparam)
+        self.params[self.ndim:] = 1.0
+        self.set_params(self.params)
 
     def build_cov(self) -> np.ndarray:
         self.L[self.idx_diag] = self.params[:self.ndim]
@@ -450,9 +469,6 @@ class CholeskyCovFitter(CovFitterBase):
         self.lb = -self.ub
         self.lb[:self.ndim] = 1.00e-15
         
-    def get_param_bounds(self) -> tuple[np.ndarray, np.ndarray]:
-        return scipy.optimize.Bounds(self.lb, self.ub)
-
     def sample(self, size: int = None) -> np.ndarray:        
         if size is None:
             size = self.nsamp
@@ -462,10 +478,7 @@ class CholeskyCovFitter(CovFitterBase):
         
         x = self.rng.normal(size=(size, self.ndim))
         x = np.matmul(x, self.L.T)
-
-        # x = np.matmul(self.z, self.L.T)
         return x
-
 
 
 
