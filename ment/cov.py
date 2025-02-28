@@ -273,7 +273,9 @@ class CovFitterBase:
         self.iteration = 0
         self.nevals = 0
         self.loss = None
-        
+        self.best_loss = np.inf
+        self.best_params = np.copy(self.params)
+
     def set_params(self, params: np.ndarray) -> None:
         """Set covariance matrix parameters."""
         self.params = np.clip(params, self.lb, self.ub)
@@ -323,6 +325,10 @@ class CovFitterBase:
         if self.verbose > 2:
             print(f"loss={self.loss:0.4e} evals={self.nevals}")
         
+        if loss < self.best_loss:
+            self.best_loss = loss
+            self.best_params = np.copy(params)
+
         return loss
         
     def fit(
