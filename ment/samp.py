@@ -172,18 +172,19 @@ def sample_metropolis_hastings(
     points = points[burnin:]
 
     if debug:
-        x_chain_stds = [np.std(chain[:, 0]) for chain in points]
-        x_chain_avgs = [np.mean(chain[:, 0]) for chain in points]
         print("debug acceptance rate =", acceptance_rate)
-        print("debug between-chain avg {x_chain_std} =", np.mean(x_chain_stds))
-        print("debug between-chain std {x_chain_std} =", np.std(x_chain_stds))
-        print("debug between-chain avg {x_chain_avg} =", np.mean(x_chain_avgs))
-        print("debug between-chain std {x_chain_avg} =", np.std(x_chain_avgs))
-
-        x_avg = np.mean(np.hstack([chain[:, 0] for chain in points]))
-        x_std = np.std( np.hstack([chain[:, 0] for chain in points]))
-        print("debug {x_avg} =", x_avg)
-        print("debug {x_avg} =", x_std)
+        for axis in range(ndim):
+            x_chain_stds = [np.std(chain[:, axis]) for chain in points]
+            x_chain_avgs = [np.mean(chain[:, axis]) for chain in points]
+            print(f"debug axis={axis} between-chain avg(x_chain_std) =", np.mean(x_chain_stds))
+            print(f"debug axis={axis} between-chain std(x_chain_std) =", np.std(x_chain_stds))
+            print(f"debug axis={axis} between-chain avg(x_chain_avg) =", np.mean(x_chain_avgs))
+            print(f"debug axis={axis} between-chain std(x_chain_avg) =", np.std(x_chain_avgs))
+    
+            x_avg = np.mean(np.hstack([chain[:, axis] for chain in points]))
+            x_std = np.std( np.hstack([chain[:, axis] for chain in points]))
+            print(f"debug axis={axis} x_avg =", x_avg)
+            print(f"debug axis={axis} x_avg =", x_std)
 
 
     # Option to return unmerged chains:
