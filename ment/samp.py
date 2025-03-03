@@ -107,6 +107,7 @@ def sample_metropolis_hastings(
         Sampled points with burn-in points discarded. Shape is (size, ndim) if merge=True
         or (size * chains, chains, ndim) if merge=False.
     """  
+    debug = int(debug)
     rng = np.random.default_rng(seed)
     size = size + burnin
 
@@ -149,24 +150,42 @@ def sample_metropolis_hastings(
     random_uniform = rng.uniform(size=(size - 1, chains))
     accept = np.zeros(chains)
     n_total_accepted = 0
+    n_total = 0
+    acceptance_rate = None
 
     for i in wrap_tqdm(range(1, size), verbose):
         proposal_point = points[i - 1] + proposal_points[i - 1]
         proposal_prob = prob_func(proposal_point)
         accept = proposal_prob > prob * random_uniform[i - 1]
-    
-        if debug and (i >= burnin):
+
+        if i > burnin:
             n_total_accepted += np.count_nonzero(accept)
-            n_total = int(chains * ((i + 1) - burnin))
+            n_total += chains
             acceptance_rate = n_total_accepted / n_total
-            print("debug {:05.0f} acceptance_rate={:0.4f}".format(i, acceptance_rate))
+            if debug > 1:
+                print("debug {:05.0f} acceptance_rate={:0.4f}".format(i, acceptance_rate))
 
         points[i] = points[i - 1]
         points[i][accept] = proposal_point[accept]
         prob[accept] = proposal_prob[accept]
 
     points = points[burnin:]
-    
+
+    if debug:
+        x_chain_stds = [np.std(chain[:, 0]) for chain in points]
+        x_chain_avgs = [np.mean(chain[:, 0]) for chain in points]
+        print("debug acceptance rate =", acceptance_rate)
+        print("debug between-chain avg {x_chain_std} =", np.mean(x_chain_stds))
+        print("debug between-chain std {x_chain_std} =", np.std(x_chain_stds))
+        print("debug between-chain avg {x_chain_avg} =", np.mean(x_chain_avgs))
+        print("debug between-chain std {x_chain_avg} =", np.std(x_chain_avgs))
+
+        x_avg = np.mean(np.hstack([chain[:, 0] for chain in points]))
+        x_std = np.std( np.hstack([chain[:, 0] for chain in points]))
+        print("debug {x_avg} =", x_avg)
+        print("debug {x_avg} =", x_std)
+
+
     # Option to return unmerged chains:
     if merge:
         points = points.reshape(points.shape[0] * points.shape[1], points.shape[2])
@@ -237,7 +256,7 @@ class MetropolisHastingsSampler(Sampler):
             verbose=self.verbose,
             debug=self.debug,
             seed=self.seed,
-        )
+        )        
         if self.shuffle:
             self.rng.shuffle(x)
         if self.noise_scale:
