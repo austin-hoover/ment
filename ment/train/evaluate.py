@@ -19,8 +19,11 @@ def evaluate_model(model: MENT, nsamp: int) -> dict:
     discrepancy_vector = np.array(discrepancy_vector)
     discrepancy = np.sum(discrepancy_vector) / len(discrepancy_vector)
 
+    cov_matrix = np.cov(x.T)
+    
     result = {}
     result["discrepancy"] = discrepancy
+    result["cov_matrix"] = cov_matrix
     return result
 
 
