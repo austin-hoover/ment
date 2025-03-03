@@ -183,8 +183,8 @@ def sample_metropolis_hastings(
     
             x_avg = np.mean(np.hstack([chain[:, axis] for chain in points]))
             x_std = np.std( np.hstack([chain[:, axis] for chain in points]))
+            print(f"debug axis={axis} x_std =", x_std)
             print(f"debug axis={axis} x_avg =", x_avg)
-            print(f"debug axis={axis} x_avg =", x_std)
 
 
     # Option to return unmerged chains:
