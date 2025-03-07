@@ -1,0 +1,71 @@
+axes.axisbelow: line
+axes.formatter.use_mathtext: False
+axes.grid: False  # enable lightweight transparent grid by default
+axes.grid.which: major
+axes.edgecolor: black
+axes.labelcolor: black
+axes.labelpad: 4.0  # more compact
+axes.labelsize: medium
+axes.labelweight: normal
+axes.linewidth: 0.6
+axes.titlepad: 5.0  # more compact
+axes.titlesize: medium
+axes.titleweight: normal
+axes.xmargin: 0.05
+axes.ymargin: 0.05
+errorbar.capsize: 3.0
+figure.autolayout: False
+figure.dpi: 100
+figure.facecolor: white  # similar to MATLAB interface
+figure.titlesize: medium
+figure.titleweight: bold  # differentiate from axes titles
+font.size: 9.0
+grid.alpha: 0.0  # lightweight unobtrusive gridlines
+grid.color: black  # lightweight unobtrusive gridlines
+grid.linestyle: -
+grid.linewidth: 0.6
+hatch.color: black
+hatch.linewidth: 0.6
+image.cmap: viridis
+image.interpolation: none
+lines.linestyle: -
+lines.linewidth: 1.5
+lines.markersize: 6.0
+legend.borderaxespad: 0  # i.e. flush against edge
+legend.borderpad: 0.5  # a bit more roomy
+legend.columnspacing: 1.5  # a bit more compact (see handletextpad)
+legend.edgecolor: black
+legend.facecolor: white
+legend.fancybox: False  # i.e. BboxStyle 'square' not 'round'
+legend.fontsize: medium
+legend.framealpha: 0.8
+legend.handleheight: 1.0  # default is 0.7
+legend.handlelength: 2.0  # default is 2.0
+legend.handletextpad: 0.5  # a bit more compact (see columnspacing)
+patch.linewidth: 0.6
+savefig.bbox: "tight"
+savefig.dpi: 1000  # use academic journal recommendation
+savefig.facecolor: white  # use white instead of 'auto'
+savefig.format: pdf  # use vector graphics
+savefig.transparent: False
+xtick.color: black
+xtick.direction: out
+xtick.labelsize: medium
+xtick.major.pad: 2.0
+xtick.major.size: 4.0
+xtick.major.width: 0.6
+xtick.minor.pad: 2.0
+xtick.minor.size: 2.0
+xtick.minor.width: 0.48
+xtick.minor.visible: True
+ytick.color: black
+ytick.direction: out
+ytick.labelsize: medium
+ytick.major.pad: 2.0
+ytick.major.size: 4.0
+ytick.major.width: 0.6
+ytick.minor.pad: 2.0
+ytick.minor.size: 2.0
+ytick.minor.width: 0.48
+ytick.minor.visible: True
+
