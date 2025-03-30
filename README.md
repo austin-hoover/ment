@@ -5,7 +5,7 @@ This repository implements MENT, an algorithm to reconstruct a distribution from
 
 ## Background
 
-A probability distribution is constrained, but not determined, by a finite set of its projections. Given a set of projections, MENT finds the distribution $p(x)$ that is compatible with the projections and maximizes the relative entropy
+A probability distribution is constrained, but not determined, by a finite set of its projections. MENT finds the distribution $p(x)$ that is compatible with the projections and maximizes the relative entropy
 
 ```math
 S[p(x), q(x)] = - \int p(x) \log \left( \frac{p(x)}{q(x)} \right) dx,
