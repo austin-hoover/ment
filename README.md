@@ -11,7 +11,7 @@ A probability distribution is constrained, but not determined, by a finite set o
 S[p(x), q(x)] = - \int p(x) \log \left( \frac{p(x)}{q(x)} \right) dx,
 ```
 
-where $q(x)$ is considered as a prior over $x$ and the integration is over all space. When the constraints provided by the measurements are not tight, the additional prior information pulls the reconstruction toward the prior. This is illustrated in the following figure, which reconstructs a concentric rings distribution from only a few projections wit a Gaussian prior. The third row shows another reconstruction that matches the data but is farther from the prior.
+where $q(x)$ is considered as a prior over $x$ and the integration is over all space. The constrained maximum-entropy distribution is as simple as possible relative to $q(x)$. This is illustrated in the following figure, which reconstructs a concentric rings distribution from only a few projections. The third row shows another reconstruction that matches the data but is farther from the Gaussian prior.
 
 <img src="docs/images/fig_rings.png" width="400px">
 
