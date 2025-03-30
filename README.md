@@ -22,7 +22,7 @@ MENT uses the method of Lagrange Multipliers combined with a nonlinear Gauss-Sei
 
 This repository contains both a forward-mode and reverse-mode implementation of MENT. In forward mode, one must sample particles from an unnormalized distribution function. An accurate grid-based sampler is included for problems of dimension $N <= 4$, and an MCMC Metropolis Hastings sampler is included for problems of dimension $N > 4$.
 
-Each projection is defined as a sum over one or more axes *after* a transformation of the coordinates. The only requirement on the transformations is that they must be deterministic and one-to-one. The code is set up to take arbitrary transformation functions as inputs; these functions map NumPy arrays to NumPy arrays. This allows straightforward integration with, i.e., beam physics simulation codes.
+Each projection is defined as a sum over one or more axes *after* a transformation of the coordinates. The only requirement on the transformations is that they must be deterministic and one-to-one. The code is set up to take arbitrary transformation functions as inputs. This allows straightforward integration with particle tracking codes.
 
 
 ## Installation
