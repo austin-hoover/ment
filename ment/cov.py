@@ -343,7 +343,7 @@ class CovFitterBase:
             self.iteration += 1
             if self.verbose > 0:
                 print(f"iter={self.iteration:04.0f} loss={self.loss:0.4e} evals={self.nevals}")
-            if self.verbose > 1:
+            if self.verbose > 1 and self.ndim < 6:
                 print(f"cov_matrix:")
                 print(self.build_cov())
 

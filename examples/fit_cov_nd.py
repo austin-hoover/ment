@@ -37,7 +37,7 @@ args = parser.parse_args()
 # Source distribution
 # --------------------------------------------------------------------------------------
 
-ndim = 6
+ndim = args.ndim
 dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=args.seed)
 x_true = dist.sample(1_000_000)
 
