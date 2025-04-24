@@ -24,6 +24,8 @@ This repository contains both a forward-mode and reverse-mode implementation of 
 
 Each projection is defined as a sum over one or more axes *after* a transformation of the coordinates. The only requirement on the transformations is that they must be deterministic and one-to-one. The code is set up to take arbitrary transformation functions as inputs. This allows straightforward integration with particle tracking codes.
 
+We also include routines to fit an $N \times N$ covariance matrix to measured projections, which is often a first step before running MENT.
+
 
 ## Installation
 
@@ -41,8 +43,7 @@ pip install -e '.[test]'
 
 ## Examples
 
-Several examples are included in the [examples](https://github.com/austin-hoover/ment/tree/main/examples) folder. See `examples/rec-simple.py` for the basic setup.
-Documentation in progress.
+Several examples are included in the [examples](https://github.com/austin-hoover/ment/tree/main/examples) folder. These examples demonstrate convergence on a variety of 2D, 4D, and 6D distributions, for both synthetic and real data from particle accelerators.
 
 
 ## References
