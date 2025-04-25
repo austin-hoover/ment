@@ -29,14 +29,14 @@ plt.rcParams["ytick.minor.visible"] = True
 # --------------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--im", type=str, default="shepp", choices=["shepp", "leaf", "tree"])
+parser.add_argument("--im", type=str, default="tree", choices=["shepp", "leaf", "tree"])  # [to do] add other distributions
 parser.add_argument("--im-blur", type=float, default=0.0)
 parser.add_argument("--im-pad", type=int, default=0)
 parser.add_argument("--im-res", type=int, default=256)
-parser.add_argument("--nmeas", type=int, default=50)
+parser.add_argument("--nmeas", type=int, default=25)
 parser.add_argument("--angle-max", type=float, default=180.0)
 parser.add_argument("--angle-min", type=float, default=0.0)
-parser.add_argument("--iters", type=int, default=20)
+parser.add_argument("--iters", type=int, default=10)
 parser.add_argument("--lr", type=float, default=0.25)
 parser.add_argument("--prior-scale", type=float, default=10.0)
 parser.add_argument("--int-loop", type=int, default=0)
@@ -373,11 +373,20 @@ results["ment"]["image"] = image_pred.copy()
 results["ment"]["sinogram"] = sinogram_pred.copy()
 
 
-# Compare 
+# Compare
+scale = 1.0 
+for name in results:
+    image = results[name]["image"]
+    image = image / np.sum(image)
+    results[name]["image"] = np.copy(image)
+    scale = max(scale, np.max(image))
+for name in results:
+    results[name]["image"] /= scale
+
 fig, axs = plt.subplots(ncols=4, figsize=(10, 2.5), sharex=True, sharey=True)
 for ax, key in zip(axs, results):
     image = results[key]["image"]
-    ax.pcolormesh(image.T)
+    ax.pcolormesh(image.T, vmin=0.0, vmax=1.0)
     ax.set_title(key.upper())
 plt.savefig(os.path.join(output_dir, "fig_compare_image.png"))
 plt.close()
