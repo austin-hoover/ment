@@ -370,7 +370,7 @@ class MENT:
         if self.mode in ["sample", "forward"]:
             values_proj = diagnostic(transform(self.unnormalize(self.sample(self.nsamp))))
 
-        elif self.mode in ["integrate", "backward"]:
+        elif self.mode in ["integrate", "reverse"]:
             # Get projection grid axis.
             projection_axis = diagnostic.axis
             if type(projection_axis) is int:
