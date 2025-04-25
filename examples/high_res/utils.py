@@ -1,4 +1,10 @@
+import os
 import numpy as np
+import skimage
+
+
+def get_grid_points(coords: list[np.ndarray]) -> np.ndarray:
+    return np.vstack([c.ravel() for c in np.meshgrid(*coords, indexing="ij")]).T
 
 
 def gen_ellipses(name: str) -> list[list[float]]:
@@ -42,7 +48,9 @@ def gen_ellipses_mod_shepp_logan():
 	        [ .10, .0230, .0460,  .06,  -.605,   0]]
 
     
-def gen_phantom(res: int = 256, name: str = "mod-shepp-logan", ellipses=None) -> np.ndarray:
+def gen_image_shepp(
+    res: int = 256, name: str = "mod-shepp-logan", ellipses=None
+) -> np.ndarray:
     """Create a Shepp-Logan or modified Shepp-Logan phantom.
 
     A phantom is a known object (either real or purely mathematical)
@@ -136,11 +144,36 @@ def gen_phantom(res: int = 256, name: str = "mod-shepp-logan", ellipses=None) ->
     return p
 
 
+def gen_image(key: str, res: int) -> None:
+    if key == "shepp":
+        image = gen_image_shepp(res)
+        return image
+
+    filenames = {
+        "leaf": "leaf.png",
+        "tree": "tree.png",
+    }
+    assert key in filenames
+    
+    filename = filenames[key]
+    filename = os.path.join("./images", filename)
+
+    image = skimage.io.imread(filename, as_gray=True)
+    image = 1.0 - image
+    image = image[::-1, :]
+    image = image.T
+
+    shape = (res, res)
+    image = skimage.transform.resize(image, shape, anti_aliasing=True)
+    return image
+        
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    image = gen_phantom()
-
-    fig, ax = plt.subplots(figsize=(4, 4))
-    ax.pcolormesh(image.T, cmap="Greys")
-    plt.show()
+    for key in ["shepp", "leaf", "tree"]:
+        image = gen_image(key, res=256)
+    
+        fig, ax = plt.subplots(figsize=(4, 4))
+        ax.pcolormesh(image.T, cmap="Greys")
+        plt.show()
