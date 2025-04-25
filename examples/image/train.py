@@ -318,12 +318,10 @@ for method in ["fbp", "sart", "ment", "true"]:
     for key in ["sinogram", "image"]:
         results[method][key] = None
 
+
 # Form true image and sinogram
 image_true = grid_values_true.copy()
-projections = ment.unravel(model.projections)
-sinogram_true = np.vstack([projection.values for projection in projections])
-sinogram_true = sinogram_true.T
-
+sinogram_true = radon_transform(image_true, angles)
 results["true"]["sinogram"] = sinogram_true.copy()
 results["true"]["image"] = image_true.copy()
 
