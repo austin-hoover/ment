@@ -207,7 +207,7 @@ class Histogram1D:
         if self.thresh:
             max_value = self.thresh
             if self.thresh_type == "frac":
-                max_value = max_value * np.max(hist)
+                max_value = max_value * np.max(values)
             values[values < max_value] = 0.0
 
         self.values = values
