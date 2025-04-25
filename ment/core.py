@@ -95,6 +95,7 @@ class MENT:
         nsamp: int = 1_000_000,
         integration_limits: list[tuple[float, float]] = None,
         integration_size: int = None,
+        integration_loop: bool = True,
         store_integration_points: bool = True,
         interpolation_kws: dict = None,
         verbose: Union[bool, int] = True,
@@ -128,6 +129,11 @@ class MENT:
             List of (min, max) coordinates of integration grid.
         integration_size : int
             Number of integration points.
+        integration_loop : bool
+            If True, compute projection by looping over all points on the M-dimensional
+            projection axis;  at each point, compute the (N - M)-dimensional integral.
+            If False, compute projection by evaluating all points at once on an 
+            N-dimensional grid, then summing over the (N - M) integration axes.
         store_integration_points : bool
             Whether to keep the integration points in memory.
         interpolation_kws : dict
@@ -168,6 +174,7 @@ class MENT:
         self.integration_limits = integration_limits
         self.integration_size = integration_size
         self.integration_points = None
+        self.integration_loop = integration_loop
         self.store_integration_points = store_integration_points
 
         self.epoch = 0
@@ -289,7 +296,7 @@ class MENT:
         return diagnostic.get_grid_points()
 
     def get_integration_points(self, index: int, diag_index: int, method: str = "grid") -> np.ndarray:
-        """Return integration points for specific diagnnostic."""
+        """Return integration points for specific diagnostic."""
         if self.integration_points is not None:
             return self.integration_points
 
@@ -376,36 +383,81 @@ class MENT:
             integration_ndim = len(integration_axis)
             integration_limits = self.integration_limits[index][diag_index]
 
-            # Get points on integration and projection grids.
-            projection_points = self.get_projection_points(index, diag_index)
-            integration_points = self.get_integration_points(index, diag_index)
-
-            # Initialize array of integration points (u).
-            u = np.zeros((integration_points.shape[0], self.ndim))
-            for k, axis in enumerate(integration_axis):
-                if integration_ndim == 1:
-                    u[:, axis] = integration_points
-                else:
-                    u[:, axis] = integration_points[:, k]
-
-            # Initialize array of projected densities (values_proj).
-            values_proj = np.zeros(projection_points.shape[0])
-            for i, point in enumerate(wrap_tqdm(projection_points, self.verbose > 1)):
-                # Set values of u along projection axis.
-                for k, axis in enumerate(projection_axis):
-                    if diagnostic.ndim == 1:
-                        u[:, axis] = point
+            if self.integration_loop:
+                # Get points on integration and projection grids.
+                projection_points = self.get_projection_points(index, diag_index)
+                integration_points = self.get_integration_points(index, diag_index)
+    
+                # Initialize array of integration points (u).
+                u = np.zeros((integration_points.shape[0], self.ndim))
+                for k, axis in enumerate(integration_axis):
+                    if integration_ndim == 1:
+                        u[:, axis] = integration_points
                     else:
-                        u[:, axis] = point[k]
+                        u[:, axis] = integration_points[:, k]
+    
+                # Initialize array of projected densities (values_proj).
+                values_proj = np.zeros(projection_points.shape[0])
+                for i, point in enumerate(wrap_tqdm(projection_points, self.verbose > 1)):
+                    # Set values of u along projection axis.
+                    for k, axis in enumerate(projection_axis):
+                        if diagnostic.ndim == 1:
+                            u[:, axis] = point
+                        else:
+                            u[:, axis] = point[k]
+    
+                    # Compute the probability density at the integration points.
+                    # Here we assume a volume-preserving transformation with Jacobian
+                    # determinant equal to 1, such that p(x) = p(u).
+                    prob = self.prob(self.normalize(transform.inverse(u)))
+    
+                    # Sum over all integration points.
+                    values_proj[i] = np.sum(prob)
 
-                # Compute the probability density at the integration points.
-                # Here we assume a volume-preserving transformation with Jacobian
-                # determinant equal to 1, such that p(x) = p(u).
-                prob = self.prob(self.normalize(transform.inverse(u)))
+            else:
+                # Evaluate all points at once on N-dimensional grid, then sum over
+                # integration axes.
+                grid_coords = [None] * self.ndim
 
-                # Sum over all integration points.
-                values_proj[i] = np.sum(prob)
+                # Get coordinates along each axis of projection grid.
+                projection_grid_coords = diagnostic.coords
+                if np.ndim(projection_grid_coords[0]) == 0:
+                    projection_grid_coords = [projection_grid_coords]
+                    
+                # Get coordinates along each axis of integration grid.
+                integration_axis = [axis for axis in range(self.ndim) if axis not in projection_axis]
+                integration_axis = tuple(integration_axis)
+                integration_ndim = len(integration_axis)
+                integration_limits = self.integration_limits[index][diag_index]        
+                if (integration_ndim == 1) and (np.ndim(integration_limits) == 1):
+                    integration_limits = [integration_limits]
+        
+                integration_grid_resolution = int(self.integration_size ** (1.0 / integration_ndim))
+                integration_grid_shape = tuple(integration_ndim * [integration_grid_resolution])
+                integration_grid_coords = [
+                    np.linspace(
+                        integration_limits[i][0],
+                        integration_limits[i][1],
+                        integration_grid_shape[i],
+                    )
+                    for i in range(integration_ndim)
+                ]
 
+                # Create N-dimensional meshgrid
+                for i, _coords in zip(projection_axis, projection_grid_coords):
+                    grid_coords[i] = _coords
+
+                for i, _coords in zip(integration_axis, integration_grid_coords):
+                    grid_coords[i] = _coords
+
+                grid_shape = tuple([len(c) for c in grid_coords])
+                    
+                grid_points = get_grid_points(grid_coords)
+                grid_values = self.prob(self.normalize(transform.inverse(grid_points)))
+                grid_values = grid_values.reshape(grid_shape)
+                values_proj = np.sum(grid_values, axis=integration_axis)
+
+            
             # Reshape the projected density array.
             if diagnostic.ndim > 1:
                 values_proj = values_proj.reshape(diagnostic.shape)
