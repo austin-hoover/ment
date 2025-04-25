@@ -9,22 +9,22 @@ def get_grid_points(coords: list[np.ndarray]) -> np.ndarray:
 
 def gen_image(key: str, res: int) -> None:
     images = None
-    
+
     if key == "shepp":
         image = skimage.data.shepp_logan_phantom()
         image = image[::-1, :]
         # image = image.T
-        
+
     else:
         filenames = {
             "leaf": "leaf.png",
             "tree": "tree.png",
         }
         assert key in filenames
-        
+
         filename = filenames[key]
         filename = os.path.join("./images", filename)
-    
+
         image = skimage.io.imread(filename, as_gray=True)
         image = 1.0 - image
         image = image[::-1, :]
@@ -48,13 +48,13 @@ def rec_fbp(projections: np.ndarray, angles: np.ndarray, iterations: int = 1) ->
     image = image.T
     return image
 
-    
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     for key in ["shepp", "leaf", "tree"]:
         image = gen_image(key, res=256)
-    
+
         fig, ax = plt.subplots(figsize=(4, 4))
         ax.pcolormesh(image.T, cmap="Greys")
         plt.show()

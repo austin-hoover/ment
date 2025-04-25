@@ -1,4 +1,5 @@
 """Test 2D MENT with high-resolution image."""
+
 import argparse
 import os
 import pathlib
@@ -77,10 +78,12 @@ plt.close()
 # Forward model
 # --------------------------------------------------------------------------------------
 
+
 def rotation_matrix(angle: float) -> np.ndarray:
     M = [[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]]
     M = np.array(M)
     return M
+
 
 angles = np.linspace(0.0, np.pi, nmeas, endpoint=False)
 
@@ -93,9 +96,7 @@ for angle in angles:
 bin_edges = grid_edges[0]
 diagnostics = []
 for transform in transforms:
-    diagnostic = ment.diag.Histogram1D(
-        axis=0, edges=bin_edges, thresh=0.01, thresh_type="frac"
-    )
+    diagnostic = ment.diag.Histogram1D(axis=0, edges=bin_edges, thresh=0.01, thresh_type="frac")
     diagnostics.append([diagnostic])
 
 
@@ -151,6 +152,7 @@ model = ment.MENT(
 # Training
 # --------------------------------------------------------------------------------------
 
+
 def collect_sinograms(model: ment.MENT) -> list[np.ndarray]:
     projections_true = ment.unravel(model.projections)
     projections_pred = ment.unravel(model.simulate())
@@ -165,10 +167,10 @@ def collect_sinograms(model: ment.MENT) -> list[np.ndarray]:
 
     return (sinogram_pred, sinogram_true)
 
-    
+
 def plot_projections(model: ment.MENT):
     (sinogram_pred, sinogram_true) = collect_sinograms(model)
-    
+
     fig, axs = plt.subplots(ncols=2, figsize=(6, 3))
     for ax, sinogram in zip(axs, [sinogram_pred, sinogram_true]):
         ax.pcolormesh(sinogram.T)
@@ -186,21 +188,21 @@ def plot_image(model: ment.MENT):
 
 def evaluate_model(model: ment.MENT) -> dict:
     (sinogram_pred, sinogram_true) = collect_sinograms(model)
-    
+
     discrepancy = np.mean(np.abs(sinogram_pred - sinogram_true))
 
     entropy = None
-    
+
     results = {}
     results["discrepancy"] = discrepancy
-    results["entropy"] = entropy    
+    results["entropy"] = entropy
     return results
 
 
 history = {}
 for key in ["iteration", "discrepancy", "entropy"]:
     history[key] = []
-    
+
 for iteration in range(args.iters):
     print("iteration =", iteration)
 
@@ -265,4 +267,3 @@ for ax, image in zip(axs, [image_pred, image_true]):
     ax.pcolormesh(image.T)
 plt.savefig(os.path.join(output_dir, "fig_sart_image.png"))
 plt.close()
-
