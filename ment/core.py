@@ -111,8 +111,9 @@ class MENT:
             A list of functions that transform the phase space coordinates. Call
             signature is `transform(x: np.ndarray) -> np.ndarray`.
         projections : list[list[Histogram]]
-            List of measured projections, which we store as HistogramND or Histogram1D
-            objects. We provide a list of projections for each transform.
+            List of measured projections, which are stored as HistogramND or Histogram1D
+            objects. A list of projections is provided for each transform; one for
+            each diagnostic. The projections are normalized.
         unnorm_matrix : np.ndarray
             Matrix V that **unnormalizes** the phase space coordinates: x = Vz.
             Defaults to identity matrix. If V = I, ignore all comments about normalized
@@ -212,6 +213,13 @@ class MENT:
         self.projections = projections
         if self.projections is None:
             self.projections = [[]]
+
+        # Make sure projections are normalized to PDFs.
+        for i in range(len(self.projections)):
+            for j in range(len(self.projections[i])):
+                if self.projections[i][j] is not None:
+                    self.projections[i][j].normalize()
+                    
         return self.projections
 
     def init_lagrange_functions(self, **interp_kws) -> list[list[np.ndarray]]:
@@ -496,7 +504,7 @@ class MENT:
             equal to 1.
         thresh : float
             Threshold applied to g_k_pred to avoid denominators very close to zero.
-            It is better to just apply a threshold in the Histogram diagnostic.
+            Can also just apply a threshold in the Histogram diagnostic.
         thresh_type : {"abs", "frac"}
             Whether `thresh` is an absolute threshold or relative to maximum value.
         """
@@ -526,16 +534,17 @@ class MENT:
                 values_meas = hist_meas.values.copy()
                 values_pred = hist_pred.values.copy()
 
-                # Threshold simulated projections (probably better to add to diagnostic)
+                min_value = 0.0
                 if thresh_type == "frac":
-                    thresh = thresh * np.max(values_pred)
-                values_pred[values_pred < thresh] = 0.0
+                    min_value = thresh * np.max(values_pred)
+                else:
+                    min_value = thresh
 
                 # Update lagrange multipliers
-                idx = np.logical_and(values_meas > 0.0, values_pred > 0.0)
+                idx = np.logical_and(values_meas > 0.0, values_pred > min_value)
                 ratio = np.ones(values_lagr.shape)
                 ratio[idx] = values_meas[idx] / values_pred[idx]
-                values_lagr *= 1.0 + learning_rate * (ratio - 1.0)
+                values_lagr *= (1.0 - learning_rate) + learning_rate * ratio 
 
                 # Reset
                 lagrange_function.values = values_lagr
