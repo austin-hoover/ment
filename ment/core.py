@@ -426,16 +426,36 @@ class MENT:
         thresh: float = 0.0, 
         thresh_type: str = "abs",
     ) -> None:
-        """Perform Gauss-Seidel update.
+        """Perform Gauss-Seidel step.
 
         The update is defined as:
 
-            h *= 1.0 + omega * ((g_meas / g_pred) - 1.0)
+        h_k *= (1 - omega) + omega * (g_k_meas / g_k_pred)
 
-        where h = exp(lambda) is the lagrange function, 0 < omega <= 1 is a learning
-        rate or damping parameter, g_meas is the measured projection, and g_pred
-        is the simulated projection.
+        where h = exp(lambda) is the Lagrange multiplier function, 
+        0 < omega <= 1 is a learning rate or damping parameter, g_k_meas 
+        is the measured projection, and g_k_pred is the simulated projection
+        using the current h functions.
+
+        Parameters
+        ----------
+        learning_rate : float
+            Learning rate (omega) in Gauss-Seidel updates. Must be less than or
+            equal to 1.
+        thresh : float
+            Threshold applied to g_k_pred to avoid denominators very close to zero.
+            It is better to just apply a threshold in the Histogram diagnostic.
+        thresh_type : {"abs", "frac"}
+            Whether `thresh` is an absolute threshold or relative to maximum value.
         """
+        if learning_rate < 0.0:
+            raise ValueError(f"learning_rate={learning_rate} < 0")
+        if learning_rate > 1.0:
+            raise ValueError(f"learning_rate={learning_rate} > 1")
+
+        if thresh_type not in ["abs", "frac"]:
+            print(f"Invalid thresh_type '{thresh_type}'")
+
         for index, transform in enumerate(self.transforms):
             if self.verbose:
                 print(f"transform={index}")
