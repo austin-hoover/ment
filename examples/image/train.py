@@ -20,7 +20,7 @@ from utils import radon_transform
 
 plt.rcParams["figure.constrained_layout.use"] = True
 plt.rcParams["image.cmap"] = "Blues"
-plt.rcParams["savefig.dpi"] = 300.0
+plt.rcParams["savefig.dpi"] = 700.0
 plt.rcParams["xtick.minor.visible"] = True
 plt.rcParams["ytick.minor.visible"] = True
 
@@ -201,7 +201,7 @@ def plot_sinogram(model: ment.MENT):
 
     fig, axs = plt.subplots(ncols=2, figsize=(6, 3))
     for ax, sinogram in zip(axs, [sinogram_pred, sinogram_true]):
-        ax.pcolormesh(sinogram.T)
+        ax.pcolormesh(sinogram.T, vmin=0.0)
     return fig, axs
 
 
@@ -211,7 +211,7 @@ def plot_image(model: ment.MENT):
 
     fig, axs = plt.subplots(ncols=2, figsize=(6, 3))
     for ax, image in zip(axs, [image_pred, image_true]):
-        ax.pcolormesh(image.T)
+        ax.pcolormesh(image.T, vmin=0.0)
     return fig, axs
 
 
@@ -334,13 +334,13 @@ results["fbp"]["sinogram"] = sinogram_pred.copy()
 
 fig, axs = plt.subplots(ncols=2, figsize=(6, 3))
 for ax, image in zip(axs, [image_pred, image_true]):
-    ax.pcolormesh(image.T)
+    ax.pcolormesh(image.T, vmin=0.0)
 plt.savefig(os.path.join(output_dir, "fig_other_fbp_image.png"))
 plt.close()
 
 fig, axs = plt.subplots(ncols=2, figsize=(6, 3))
 for ax, sinogram in zip(axs, [sinogram_pred, sinogram_true]):
-    ax.pcolormesh(sinogram)
+    ax.pcolormesh(sinogram, vmin=0.0)
 plt.savefig(os.path.join(output_dir, "fig_other_fbp_sinogram.png"))
 plt.close()
 
@@ -372,19 +372,19 @@ results["ment"]["sinogram"] = sinogram_pred.copy()
 
 
 # Compare
-scale = 1.0 
-for name in results:
-    image = results[name]["image"]
-    image = image / np.sum(image)
-    results[name]["image"] = np.copy(image)
-    scale = max(scale, np.max(image))
-for name in results:
-    results[name]["image"] /= scale
+for key in ["image", "sinogram"]:
+    for name in results:
+        results[name][key] /= np.sum(results[name][key])
+    for name in results:
+        results[name][key] /= np.max(results["true"][key])
+
+vmin = 0.0
+vmax = 1.1
 
 fig, axs = plt.subplots(ncols=4, figsize=(10, 2.5), sharex=True, sharey=True)
-for ax, key in zip(axs, results):
-    image = results[key]["image"]
-    ax.pcolormesh(image.T, vmin=0.0, vmax=1.0)
+for ax, name in zip(axs, results):
+    image = results[name]["image"]
+    ax.pcolormesh(image.T, vmin=vmin, vmax=vmax)
     ax.set_title(key.upper())
 plt.savefig(os.path.join(output_dir, "fig_compare_image.png"))
 plt.close()
@@ -392,8 +392,8 @@ plt.close()
 fig, axs = plt.subplots(ncols=4, figsize=(10, 2.5), sharex=True, sharey=True)
 for ax, key in zip(axs, results):
     image = results[key]["sinogram"]
-    ax.pcolormesh(image.T)
-    ax.set_title(key.upper())
+    ax.pcolormesh(image.T, vmin=vmin, vmax=vmax)
+    ax.set_title(name.upper())
 plt.savefig(os.path.join(output_dir, "fig_compare_sinogram.png"))
 plt.close()
 
@@ -402,7 +402,7 @@ for j, name in enumerate(results):
     for i, key in enumerate(["image", "sinogram"]):
         ax = axs[i, j]
         image = results[name][key]        
-        ax.pcolormesh(image.T)
+        ax.pcolormesh(image.T, vmin=vmin, vmax=vmax)
 for j, name in enumerate(results):
     axs[0, j].set_title(name.upper())
 for ax in axs.flat:
