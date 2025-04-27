@@ -29,7 +29,12 @@ plt.rcParams["ytick.minor.visible"] = True
 # --------------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--im", type=str, default="tree", choices=["shepp", "leaf", "tree"])  # [to do] add other distributions
+parser.add_argument(
+    "--im", 
+    type=str, 
+    default="tree", 
+    choices=["shepp", "leaf", "tree", "brain"]
+)
 parser.add_argument("--im-blur", type=float, default=0.0)
 parser.add_argument("--im-pad", type=int, default=0)
 parser.add_argument("--im-res", type=int, default=256)

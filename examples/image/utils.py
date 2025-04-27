@@ -7,13 +7,19 @@ def get_grid_points(coords: list[np.ndarray]) -> np.ndarray:
     return np.vstack([c.ravel() for c in np.meshgrid(*coords, indexing="ij")]).T
 
 
-def gen_image(key: str, res: int, blur: float = 0.0, pad: int = 0) -> None:
+def gen_image(key: str, res: int = None, blur: float = 0.0, pad: int = 0) -> None:
     images = None
 
     if key == "shepp":
         image = skimage.data.shepp_logan_phantom()
         image = image[::-1, :]
-        # image = image.T
+        image = image.T
+
+    elif key == "brain":
+        images = skimage.data.brain()
+        image = images[len(images) // 2]
+        image = image[::-1, :]
+        image = image.T
 
     else:
         filenames = {
@@ -40,8 +46,9 @@ def gen_image(key: str, res: int, blur: float = 0.0, pad: int = 0) -> None:
         new_image[pad:-pad, pad:-pad] = image.copy()
         image = new_image.copy()
         
-    shape = (res, res)
-    image = skimage.transform.resize(image, shape, anti_aliasing=True)
+    if res:
+        shape = (res, res)
+        image = skimage.transform.resize(image, shape, anti_aliasing=True)
 
     if blur:
         image = skimage.filters.gaussian(image, blur)
