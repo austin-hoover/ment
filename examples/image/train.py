@@ -102,15 +102,6 @@ for angle in angles:
     transform = ment.sim.LinearTransform(matrix)
     transforms.append(transform)
 
-diagnostics = []
-for transform in transforms:
-    diagnostic = ment.diag.Histogram1D(
-        axis=0, 
-        edges=grid_edges[0],
-        thresh=0.0,
-    )
-    diagnostics.append([diagnostic])
-
 
 # Training data
 # --------------------------------------------------------------------------------------
