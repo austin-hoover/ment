@@ -1,1 +1,3 @@
-https://github.com/austin-hoover/ndim-ment-sampling
+https://arxiv.org/abs/2409.17915
+
+https://zenodo.org/records/15352529
