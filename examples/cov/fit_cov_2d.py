@@ -1,7 +1,10 @@
 """Fit 2D covariance matrix to 1D measurements."""
 import argparse
+import os
+import pathlib
 from typing import Callable
 from typing import Optional
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -13,7 +16,7 @@ from ment.utils import unravel
 from ment.utils import rotation_matrix
 
 
-# Setup
+# Arguments
 # --------------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser()
@@ -24,6 +27,14 @@ parser.add_argument("--nsamp", type=int, default=1000)
 parser.add_argument("--iters", type=int, default=1000)
 parser.add_argument("--method", type=str, default="differential_evolution")
 args = parser.parse_args()
+
+
+# Setup
+# --------------------------------------------------------------------------------------
+
+path = pathlib.Path(__file__)
+output_dir = os.path.join("outputs", path.stem)
+os.makedirs(output_dir, exist_ok=True)
 
 ndim = 2
 
@@ -84,7 +95,7 @@ print(cov_matrix)
 print(fit_results)
 
 # Plot results
-x = fitter.sample(10_000)
+x = fitter.sample(100_000)
 projections_pred = unravel(simulate(x, fitter.transforms, fitter.diagnostics))
 projections_meas = unravel(fitter.projections)
 
@@ -100,7 +111,9 @@ for i, ax in enumerate(axs):
     values_meas = projections_meas[i].values
     ax.plot(values_pred / values_meas.max(), color="lightgray")
     ax.plot(values_meas / values_meas.max(), color="black", lw=0.0, marker=".", ms=2.0)
-plt.show()
+plt.savefig(os.path.join(output_dir, "fig_results.png"), dpi=300)
+plt.close()
+
 
 
 

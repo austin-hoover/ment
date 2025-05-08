@@ -90,6 +90,7 @@ model = ment.MENT(
     sampler=sampler,
     integration_limits=integration_limits,
     integration_size=integration_size,
+    integration_loop=False,
     mode="integrate",
 )
 
@@ -133,12 +134,12 @@ for epoch in range(4):
     fig.savefig(os.path.join(output_dir, f"fig_proj_{epoch:02.0f}.png"))
     plt.close("all")
 
+
 # Plot final distribution
 x_pred = model.sample(x_true.shape[0])
 
-fig, axs = plt.subplots(ncols=2, constrained_layout=True)
-for ax, X in zip(axs, [x_pred, x_true]):
-    ax.hist2d(X[:, 0], X[:, 1], bins=55, range=[(-4.0, 4.0), (-4.0, 4.0)])
-    ax.set_aspect(1.0)
+fig, axs = plt.subplots(ncols=2, figsize=(6.0, 3.0), constrained_layout=True)
+for ax, x in zip(axs, [x_pred, x_true]):
+    ax.hist2d(x[:, 0], x[:, 1], bins=55, range=[(-4.0, 4.0), (-4.0, 4.0)])
 fig.savefig(os.path.join(output_dir, f"fig_dist_{epoch:02.0f}.png"))
 plt.close("all")

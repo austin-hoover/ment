@@ -85,7 +85,6 @@ def set_bunch_coords(bunch: Bunch, x: np.ndarray, axis: tuple[int, ...] = None) 
     if axis is None:
         axis = tuple(range(6))
 
-   # Resize
     size = x.shape[0]
     size_error = size - bunch.getSize()
     if size_error > 0:
@@ -137,7 +136,6 @@ drift_node_2 = DriftTEAPOT()
 drift_node_1.setLength(124.0)
 drift_node_2.setLength(124.0)
 
-
 z_to_phi = 2.0 * np.pi / 248.0
 rf_hnum = 1.0
 rf_length = 0.0
@@ -160,6 +158,13 @@ bunch.getSyncParticle().kinEnergy(1.000)
 
 for i in range(x_true.shape[0]):
     bunch.addParticle(0.0, 0.0, 0.0, 0.0, x_true[i, 0], x_true[i, 1])
+
+
+# Evolve forward a few turns; this will be our ground-truth distribution.
+for _ in range(250):
+    lattice.trackBunch(bunch)
+
+x_true = get_bunch_coords(bunch, axis=(4, 5))
 
 
 # Create transform functions
@@ -189,23 +194,19 @@ for transform in transforms:
 # Training data
 # --------------------------------------------------------------------------------------
 
-# Here we simulate the projections; in real life the projections would be measured.
 projections = ment.sim.simulate(x_true, transforms, diagnostics)
 
 
 # Reconstruction model
 # --------------------------------------------------------------------------------------
 
-# Define prior distribution for relative entropy calculation
 prior = ment.prior.GaussianPrior(ndim=2, scale=[200.0, 0.020])
 
-# Define particle sampler (if mode="sample")
 sampler = ment.samp.GridSampler(
     grid_limits=limits,
     grid_shape=(128, 128),
 )
 
-# Set up MENT model
 model = ment.MENT(
     ndim=ndim,
     transforms=transforms,
@@ -254,10 +255,11 @@ for epoch in range(4):
     fig.savefig(os.path.join(output_dir, f"fig_proj_{epoch:02.0f}.png"))
     plt.close()
 
+
 # Plot final distribution
 x_pred = model.sample(x_true.shape[0])
 
-fig, axs = plt.subplots(ncols=2, constrained_layout=True)
+fig, axs = plt.subplots(ncols=2, figsize=(6, 3), constrained_layout=True)
 for ax, x in zip(axs, [x_pred, x_true]):
     ax.hist2d(x[:, 0], x[:, 1], bins=100, range=limits)
 fig.savefig(os.path.join(output_dir, f"fig_dist_{epoch:02.0f}.png"))
