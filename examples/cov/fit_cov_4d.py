@@ -1,11 +1,12 @@
 """Fit 4D covariance matrix to 2D measurements."""
 import argparse
+import os
+import pathlib
 from typing import Callable
 from typing import Optional
-import matplotlib.pyplot as plt
+
 import numpy as np
-import psdist as ps
-import scipy.optimize
+from matplotlib import pyplot as plt
 from matplotlib.patches import Ellipse
 
 import ment
@@ -16,7 +17,7 @@ from ment.utils import unravel
 from ment.utils import rotation_matrix
 
 
-# Setup
+# Arguments
 # --------------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser()
@@ -29,6 +30,14 @@ parser.add_argument("--seed", type=int, default=1234)
 parser.add_argument("--iters", type=int, default=1000)
 parser.add_argument("--method", type=str, default="differential_evolution")
 args = parser.parse_args()
+
+
+# Setup
+# --------------------------------------------------------------------------------------
+
+path = pathlib.Path(__file__)
+output_dir = os.path.join("outputs", path.stem)
+os.makedirs(output_dir, exist_ok=True)
 
 
 # Source distribution
@@ -83,7 +92,7 @@ fitter = ment.CholeskyCovFitter(
     bound=1.00e+02,
     verbose=True,
 )
-cov_matrix, fit_result = fitter.fit(method=args.method)
+cov_matrix, fit_result = fitter.fit(method=args.method, iters=args.iters)
 
 
 # Print results
@@ -92,6 +101,23 @@ print(fitter.build_cov())
 
 
 # Plot results
+def rms_ellipse_params(cov_matrix: np.ndarray) -> tuple[float, float, float]:
+    sii = cov_matrix[0, 0]
+    sjj = cov_matrix[1, 1]
+    sij = cov_matrix[0, 1]
+    
+    angle = -0.5 * np.arctan2(2 * sij, sii - sjj)
+    
+    _sin = np.sin(angle)
+    _cos = np.cos(angle)
+    _sin2 = _sin**2
+    _cos2 = _cos**2
+    
+    c1 = np.sqrt(abs(sii * _cos2 + sjj * _sin2 - 2 * sij * _sin * _cos))
+    c2 = np.sqrt(abs(sii * _sin2 + sjj * _cos2 + 2 * sij * _sin * _cos))
+    return (c1, c2, angle)
+
+
 x = fitter.sample(100_000)
 projections_pred = unravel(simulate(x, fitter.transforms, fitter.diagnostics))
 projections_true = unravel(fitter.projections)
@@ -101,7 +127,7 @@ nrows = int(np.ceil(args.nmeas / ncols))
 fig, axs = plt.subplots(
     ncols=ncols, 
     nrows=nrows, 
-    figsize=(1.5 * ncols, 1.1 * nrows), 
+    figsize=(1.1 * ncols, 1.1 * nrows), 
     constrained_layout=True,
     sharex=True,
     sharey=True,
@@ -115,14 +141,13 @@ for proj_true, proj_pred, ax in zip(projections_true, projections_pred, axs.flat
         color = ["white", "red"][i]
         ls = ["-", "-"][i]
         
-        cx, cy, angle = ps.cov.rms_ellipse_params(proj.cov(), axis=(0, 1))
+        cx, cy, angle = rms_ellipse_params(proj.cov())
         angle = -np.degrees(angle)
         center = (0.0, 0.0)
         cx *= 4.0
         cy *= 4.0
         ax.add_patch(Ellipse(center, cx, cy, angle=angle, color=color, fill=False, ls=ls))
-plt.show()
-
-
+plt.savefig(os.path.join(output_dir, "fig_results.png"), dpi=300)
+plt.close()
 
 
