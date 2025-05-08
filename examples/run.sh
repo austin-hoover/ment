@@ -1,17 +1,12 @@
 #!/bin/bash
 
-set -x
+find . -type d -name "*.ipynb_checkpoints" -exec rm -rf {} \;
+find . -type f -name "*.DS_Store" -exec rm -rf {} \;
 
-# Run jupyter notebooks in place
-for filename in *.ipynb; do
-  if [[ ! "$filename" == *".ipynb_checkpoints"* ]]; then
-    jupyter nbconvert --inplace --ExecutePreprocessor.kernel_name=ment --execute $filename;
-  fi
-done
-
-# Run python scripts
-for filename in *.py; do
-  if [[ ! "$filename" == *".ipynb_checkpoints"* ]]; then
-    python $filename;
-  fi
+for folder in ./*/; do
+    cd $folder        
+    pwd
+    # find . -type f -name "*.py"    -exec echo {} \; -exec python {} \;
+    find . -type f -name "*.ipynb" -exec echo {} \; -exec jupyter nbconvert --inplace --ExecutePreprocessor.kernel_name=ment --execute {} \;
+    cd ..
 done
