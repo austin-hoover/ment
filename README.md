@@ -26,6 +26,8 @@ Each projection is defined as a sum over one or more axes *after* a transformati
 
 We also include routines to fit an $N \times N$ covariance matrix to measured projections, which is often a first step before running MENT.
 
+(An experimental version using automatic differentiation is [here](https://github.com/austin-hoover/ment-torch).)
+
 
 ## Installation
 
