@@ -122,7 +122,8 @@ class MENT:
             Prior distribution over the **normalized** phase space coordinates z = V^-1 x.
             Must implement `prior.prob(z: np.ndarray) -> np.ndarray`.
         sampler : Callable
-            Calling `sampler(f, n)` generates n samples from the function f.
+            Calling `sampler(prob, n)` generates `n` samples from the probability
+            density function `prob`.
         nsamp : int
             Number of samples to use when computing projections. Only relevant if
             `self.mode=="sample".
