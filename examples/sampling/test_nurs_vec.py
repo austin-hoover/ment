@@ -15,6 +15,9 @@ plt.style.use("../style.mplstyle")
 
 
 def log_prob_func_ring(x: np.ndarray) -> float:
+    # if x.ndim == 1:
+    #     x = x[None, :]
+
     x1 = x[:, 0]
     x2 = x[:, 1]
     return np.sin(np.pi * x1) - 2.0 * (x1**2 + x2**2 - 2.0) ** 2
@@ -80,7 +83,7 @@ if __name__ == "__main__":
     rng = np.random.default_rng(args.seed)
     nchains = args.chains
     ndraws = args.n // nchains
-    theta_init = np.zeros((nchains, ndim))
+    theta_init = rng.normal(size=(nchains, ndim))
 
     draws, accepts, depths = nurs.nurs_vectorized(
         rng=rng,
@@ -90,7 +93,6 @@ if __name__ == "__main__":
         step_size=0.2,
         max_doublings=10,
         threshold=1e-5,
-        num_chains=nchains,
     )
     draws = np.vstack(draws)
 
