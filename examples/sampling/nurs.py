@@ -165,42 +165,31 @@ def nurs_vectorized(
     log_step_size = np.log(step_size)
     log_threshold = np.log(threshold)
 
-    def stopping_condition(trees):
-        """Check stopping condition for batch of trees.
+    def stopping_condition(tree):
+        """Check stopping condition for a tree."""
+        log_epsilon = log_threshold + log_step_size + tree["lp"]
+        return (tree["left_min"] < log_epsilon) & (tree["right_min"] < log_epsilon)
 
-        Trees structure: dict with keys 'selected', 'lp', 'left', 'right', 'left_min', 'right_min'
-        All values are arrays of shape (num_chains, dim) for theta or (num_chains,) for scalars
-        """
-        log_epsilon = log_threshold + log_step_size + trees["lp"]
-        return (trees["left_min"] < log_epsilon) & (trees["right_min"] < log_epsilon)
-
-    def leaf(theta_batch: np.ndarray):
-        """Create leaf nodes for batch of thetas.
-
-        Returns: dict with tree information
-        """
-        lp = log_prob_func(theta_batch)  # (num_chains,)
+    def leaf(theta: np.ndarray):
+        """Create leaf node for a single theta."""
+        lp = log_prob_func(theta.reshape(1, -1))[0]
         return {
-            "selected": theta_batch.copy(),
+            "selected": theta.copy(),
             "lp": lp,
-            "left": theta_batch.copy(),
-            "right": theta_batch.copy(),
+            "left": theta.copy(),
+            "right": theta.copy(),
             "left_min": lp,
             "right_min": lp,
         }
 
     def combine_trees(tree1, tree2, direction):
-        """Combine two trees. Direction: 1=forward, 0=backward."""
+        """Combine two trees for a single chain."""
         lp1 = tree1["lp"]
         lp2 = tree2["lp"]
-        lp12 = logsumexp(np.column_stack([lp1, lp2]), axis=1)
+        lp12 = logsumexp([lp1, lp2])
 
-        # Randomly select from tree1 or tree2
-        probs = np.exp(lp2 - lp12)
-        updates = rng.binomial(1, probs).astype(bool)
-        selected = np.where(
-            updates[:, np.newaxis], tree2["selected"], tree1["selected"]
-        )
+        update = rng.binomial(1, np.exp(lp2 - lp12))
+        selected = tree2["selected"] if update else tree1["selected"]
 
         if direction == 1:
             return {
@@ -221,160 +210,71 @@ def nurs_vectorized(
                 "right_min": tree1["right_min"],
             }
 
-    def build_tree(depth, tree_current, rho, direction):
-        """Build tree for all chains simultaneously.
-
-        Returns: (tree, active_mask) where active_mask indicates which chains succeeded
-        """
+    def build_tree(depth, theta_last, rho, direction):
+        """Build tree for a single chain. Returns None if stopping condition met."""
         h = step_size * (2 * direction - 1)
 
         if depth == 0:
-            # Get theta from current tree's right or left boundary
-            if direction == 1:
-                theta_last = tree_current["right"]
-            else:
-                theta_last = tree_current["left"]
-
             theta_next = theta_last + h * rho
-            tree_new = leaf(theta_next)
-            active = np.ones(num_chains, dtype=bool)
-            return tree_new, active
+            return leaf(theta_next)
 
-        # Recursive case
-        tree1, active1 = build_tree(depth - 1, tree_current, rho, direction)
+        tree1 = build_tree(depth - 1, theta_last, rho, direction)
+        if tree1 is None:
+            return None
 
-        # For chains that failed, return dummy tree
-        if not np.any(active1):
-            return tree1, active1
-
-        # Update tree_current boundaries for next recursive call
-        tree_mid = tree1.copy()
-
-        tree2, active2 = build_tree(depth - 1, tree_mid, rho, direction)
-
-        active = active1 & active2
-
-        if not np.any(active):
-            return tree1, active
+        theta_mid = tree1["right"] if direction == 1 else tree1["left"]
+        tree2 = build_tree(depth - 1, theta_mid, rho, direction)
+        if tree2 is None:
+            return None
 
         tree = combine_trees(tree1, tree2, direction)
 
-        # Check stopping condition
-        stopped = ~stopping_condition(tree)
-        active = active & ~stopped
+        if not stopping_condition(tree):
+            return None
 
-        return tree, active
+        return tree
 
-    def random_directions():
-        """Generate random unit directions for all chains."""
-        u = rng.normal(size=(num_chains, dim))
-        norms = np.linalg.norm(u, axis=1, keepdims=True)
-        return u / norms
+    def random_direction():
+        """Generate random unit direction."""
+        u = rng.normal(size=dim)
+        return u / np.linalg.norm(u)
 
-    def metropolis(theta_batch, rho_batch):
-        """Vectorized Metropolis step."""
-        lp_theta = log_prob_func(theta_batch)
-        s = (rng.random(size=num_chains) - 0.5) * step_size
-        theta_star = theta_batch + s[:, np.newaxis] * rho_batch
-        lp_theta_star = log_prob_func(theta_star)
+    def metropolis(theta, rho):
+        """Metropolis step for a single chain."""
+        lp_theta = log_prob_func(theta.reshape(1, -1))[0]
+        s = (rng.random() - 0.5) * step_size
+        theta_star = theta + s * rho
+        lp_theta_star = log_prob_func(theta_star.reshape(1, -1))[0]
 
         accept_prob = np.minimum(1.0, np.exp(lp_theta_star - lp_theta))
-        accepts = rng.binomial(1, accept_prob).astype(bool)
+        accept = rng.binomial(1, accept_prob)
 
-        theta_new = np.where(accepts[:, np.newaxis], theta_star, theta_batch)
+        return (theta_star if accept else theta), accept
 
-        return theta_new, accepts
+    def transition_single(theta):
+        """Single transition for one chain."""
+        rho = random_direction()
+        theta, accept = metropolis(theta, rho)
+        tree = leaf(theta)
 
-    def transition(theta_current):
-        """Single transition for all chains."""
-        rho = random_directions()
-        theta_metro, accepts = metropolis(theta_current, rho)
+        directions = rng.integers(0, 2, size=max_doublings)
+        tree_depth = 0
 
-        # Initialize tree with metropolis result
-        tree = leaf(theta_metro)
+        for d in range(max_doublings):
+            direction = directions[d]
+            theta_mid = tree["right"] if direction == 1 else tree["left"]
+            tree_next = build_tree(d, theta_mid, rho, direction)
 
-        depths = np.zeros(num_chains, dtype=int)
-        directions = rng.integers(0, 2, size=(num_chains, max_doublings))
-
-        for tree_depth in range(max_doublings):
-            direction_batch = directions[:, tree_depth]
-
-            # We need to handle each direction separately since they modify the tree differently
-            # For simplicity, let's process all chains with the same logic but use their individual directions
-
-            # Split by direction
-            forward_mask = direction_batch == 1
-            backward_mask = direction_batch == 0
-
-            all_active = np.zeros(num_chains, dtype=bool)
-            tree_next = {
-                k: v.copy() if isinstance(v, np.ndarray) else v for k, v in tree.items()
-            }
-
-            # Process forward direction chains
-            if np.any(forward_mask):
-                tree_f, active_f = build_tree(tree_depth, tree, rho, 1)
-                # Update only forward chains
-                for key in tree_next:
-                    if isinstance(tree_next[key], np.ndarray):
-                        if tree_next[key].ndim == 2:  # theta arrays
-                            tree_next[key] = np.where(
-                                forward_mask[:, np.newaxis] & active_f[:, np.newaxis],
-                                tree_f[key],
-                                tree_next[key],
-                            )
-                        else:  # scalar arrays
-                            tree_next[key] = np.where(
-                                forward_mask & active_f, tree_f[key], tree_next[key]
-                            )
-                all_active |= forward_mask & active_f
-
-            # Process backward direction chains
-            if np.any(backward_mask):
-                tree_b, active_b = build_tree(tree_depth, tree, rho, 0)
-                # Update only backward chains
-                for key in tree_next:
-                    if isinstance(tree_next[key], np.ndarray):
-                        if tree_next[key].ndim == 2:  # theta arrays
-                            tree_next[key] = np.where(
-                                backward_mask[:, np.newaxis] & active_b[:, np.newaxis],
-                                tree_b[key],
-                                tree_next[key],
-                            )
-                        else:  # scalar arrays
-                            tree_next[key] = np.where(
-                                backward_mask & active_b, tree_b[key], tree_next[key]
-                            )
-                all_active |= backward_mask & active_b
-
-            # Update depths for chains that successfully expanded
-            depths = np.where(all_active, tree_depth, depths)
-
-            # Combine with previous tree
-            tree = combine_trees(
-                tree, tree_next, 1
-            )  # direction doesn't matter here since we already updated
-
-            # Actually, we should just use tree_next as the new tree for active chains
-            for key in tree:
-                if isinstance(tree[key], np.ndarray):
-                    if tree[key].ndim == 2:
-                        tree[key] = np.where(
-                            all_active[:, np.newaxis], tree_next[key], tree[key]
-                        )
-                    else:
-                        tree[key] = np.where(all_active, tree_next[key], tree[key])
-
-            # Stop if no chains are active
-            if not np.any(all_active):
+            if tree_next is None:
                 break
 
-            # Check stopping condition for all chains
-            stopped = ~stopping_condition(tree)
-            if np.all(stopped):
+            tree = combine_trees(tree, tree_next, direction)
+            tree_depth = d
+
+            if not stopping_condition(tree):
                 break
 
-        return tree["selected"], accepts.astype(int), depths
+        return tree["selected"], accept, tree_depth
 
     # Main sampling loop
     draws = np.zeros((num_chains, num_draws, dim))
@@ -384,6 +284,10 @@ def nurs_vectorized(
     draws[:, 0, :] = theta_init
 
     for m in tqdm.tqdm(range(1, num_draws), initial=1, total=num_draws):
-        draws[:, m, :], accepts[:, m], depths[:, m] = transition(draws[:, m - 1, :])
+        for chain_idx in range(num_chains):
+            result = transition_single(draws[chain_idx, m - 1, :])
+            draws[chain_idx, m, :] = result[0]
+            accepts[chain_idx, m] = result[1]
+            depths[chain_idx, m] = result[2]
 
     return draws, accepts, depths
