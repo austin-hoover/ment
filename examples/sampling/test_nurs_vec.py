@@ -76,7 +76,9 @@ if __name__ == "__main__":
 
     ndim = 2
     rng = np.random.default_rng()
-    theta_init = rng.normal(size=(2, ndim))
+    nchains = 1
+    # theta_init = rng.normal(size=(nchains, ndim))
+    theta_init = rng.normal(size=ndim)
     draws, accepts, depths = nurs.nurs_vec(
         rng=rng,
         log_prob_func=log_prob_func,
@@ -85,6 +87,7 @@ if __name__ == "__main__":
         step_size=0.2,
         max_doublings=10,
         threshold=1e-5,
+        num_chains=nchains,
     )
 
     fig, axs = plot_samples(log_prob_func, draws)
