@@ -1,4 +1,4 @@
-"""Test NURS sampler on 2D distribution."""
+"""Test vectorized NURS sampler on 2D distribution."""
 
 import argparse
 import os
@@ -15,13 +15,13 @@ plt.style.use("../style.mplstyle")
 
 
 def log_prob_func_ring(x: np.ndarray) -> float:
-    x1 = x[0]
-    x2 = x[1]
+    x1 = x[:, 0]
+    x2 = x[:, 1]
     return np.sin(np.pi * x1) - 2.0 * (x1**2 + x2**2 - 2.0) ** 2
 
 
 def log_prob_func_normal(x: np.ndarray) -> float:
-    return -0.5 * np.sum(x**2)
+    return -0.5 * np.sum(x**2, axis=1)
 
 
 def get_log_prob_func(name: str) -> Callable:
@@ -46,9 +46,7 @@ def plot_samples(
         [c.ravel() for c in np.meshgrid(*grid_coords, indexing="ij")], axis=-1
     )
 
-    grid_values_true = np.zeros(grid_points.shape[0])
-    for i, x in enumerate(grid_points):
-        grid_values_true[i] = np.exp(log_prob_func(x))
+    grid_values_true = np.exp(log_prob_func(grid_points))
     grid_values_true = grid_values_true.reshape(grid_shape)
     grid_values_true /= np.sum(grid_values_true)
 
@@ -78,8 +76,8 @@ if __name__ == "__main__":
 
     ndim = 2
     rng = np.random.default_rng()
-    theta_init = rng.normal(size=ndim)
-    draws, accepts, depths = nurs.nurs(
+    theta_init = rng.normal(size=(2, ndim))
+    draws, accepts, depths = nurs.nurs_vec(
         rng=rng,
         log_prob_func=log_prob_func,
         theta_init=theta_init,

@@ -12,6 +12,7 @@ from scipy.special import logsumexp
 
 # tree is tuple(selected[0], logp[1], left[2], right[3], logp_left[4], logp_right[5])
 
+
 def nurs(
     rng: np.random.Generator,
     log_prob_func: Callable,
@@ -22,7 +23,7 @@ def nurs(
     threshold: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Run base NURS sampler.
-    
+
     Args:
         rng: Random number generator.
         log_prob_func: Returns log probability density at theta.
@@ -31,11 +32,11 @@ def nurs(
         step_size: Step size.
         max_doublings: Max number of doublings.
         threshold: Threshold for [...]
-    
+
     Returns:
         draws:
         accepts:
-        depths: 
+        depths:
     """
     dim = np.size(theta_init)
     log_step_size = np.log(step_size)
@@ -117,3 +118,16 @@ def nurs(
         return draws, accepts, depths
 
     return sample()
+
+
+def nurs_vec(
+    rng: np.random.Generator,
+    log_prob_func: Callable,
+    theta_init: np.ndarray,
+    num_draws: int,
+    step_size: float,
+    max_doublings: int,
+    threshold: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Vectorized NURS sampler."""
+    raise NotImplementedError
