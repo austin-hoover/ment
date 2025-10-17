@@ -59,6 +59,7 @@ rng = np.random.default_rng(args.seed)
 # Forward model
 # --------------------------------------------------------------------------------------
 
+
 class ProjectionTransform:
     def __init__(self, direction: np.ndarray) -> None:
         self.direction = direction
@@ -94,11 +95,11 @@ projections = simulate(x_true, transforms, diagnostics)
 
 # Run optimizer
 fitter = ment.CholeskyCovFitter(
-    ndim=ndim, 
+    ndim=ndim,
     transforms=transforms,
     projections=projections,
     nsamp=args.nsamp,
-    bound=1.00e+02,
+    bound=1.00e02,
     verbose=args.verbose,
 )
 cov_matrix, fit_result = fitter.fit(method=args.method, iters=args.iters)
@@ -120,10 +121,10 @@ nrows = int(np.ceil(args.nmeas / ncols))
 fig, axs = plt.subplots(
     ncols=ncols,
     nrows=nrows,
-    figsize=(ncols * 1.1, nrows * 1.1), 
+    figsize=(ncols * 1.1, nrows * 1.1),
     sharey=True,
     sharex=True,
-    constrained_layout=True
+    constrained_layout=True,
 )
 for i, ax in enumerate(axs.flat):
     values_pred = projections_pred[i].values
@@ -132,8 +133,3 @@ for i, ax in enumerate(axs.flat):
     ax.plot(values_meas / values_meas.max(), color="black", lw=0.0, marker=".", ms=2.0)
 plt.savefig(os.path.join(output_dir, "fig_results.png"), dpi=300)
 plt.close()
-
-
-
-
-

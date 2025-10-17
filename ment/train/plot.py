@@ -168,7 +168,9 @@ class PlotProj1D:
 
         fig, axs = plt.subplots(**self.fig_kws)
 
-        for i, (proj_pred, proj_true) in enumerate(zip(projections_pred, projections_true)):
+        for i, (proj_pred, proj_true) in enumerate(
+            zip(projections_pred, projections_true)
+        ):
             ax = axs[i]
 
             proj_pred = proj_pred.copy()

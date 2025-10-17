@@ -39,20 +39,20 @@ def gen_image(key: str, res: int = None, blur: float = 0.0, pad: int = 0) -> Non
         if key == "tree":
             pad = max(pad, 25)
 
-    if pad:    
+    if pad:
         shape = image.shape
         new_shape = tuple(np.add(shape, pad * 2))
         new_image = np.zeros(new_shape)
         new_image[pad:-pad, pad:-pad] = image.copy()
         image = new_image.copy()
-        
+
     if res:
         shape = (res, res)
         image = skimage.transform.resize(image, shape, anti_aliasing=True)
 
     if blur:
         image = skimage.filters.gaussian(image, blur)
-        
+
     return image
 
 
@@ -64,7 +64,9 @@ def radon_transform(image: np.ndarray, angles: np.ndarray) -> np.ndarray:
     return sinogram
 
 
-def rec_sart(sinogram: np.ndarray, angles: np.ndarray, iterations: int = 1) -> np.ndarray:
+def rec_sart(
+    sinogram: np.ndarray, angles: np.ndarray, iterations: int = 1
+) -> np.ndarray:
     theta = -np.copy(np.degrees(angles))
     image = skimage.transform.iradon_sart(sinogram, theta=theta)
     for _ in range(iterations - 1):
@@ -73,7 +75,9 @@ def rec_sart(sinogram: np.ndarray, angles: np.ndarray, iterations: int = 1) -> n
     return image
 
 
-def rec_fbp(sinogram: np.ndarray, angles: np.ndarray, iterations: int = 1) -> np.ndarray:
+def rec_fbp(
+    sinogram: np.ndarray, angles: np.ndarray, iterations: int = 1
+) -> np.ndarray:
     theta = -np.copy(np.degrees(angles))
     image = skimage.transform.iradon(sinogram, theta=theta)
     image = image.T
