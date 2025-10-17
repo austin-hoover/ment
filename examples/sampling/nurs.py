@@ -188,6 +188,7 @@ def nurs_vectorized(
         lp2 = tree2["lp"]
         lp12 = logsumexp([lp1, lp2])
 
+        # Use binomial to match original exactly
         update = rng.binomial(1, np.exp(lp2 - lp12))
         selected = tree2["selected"] if update else tree1["selected"]
 
@@ -247,7 +248,7 @@ def nurs_vectorized(
         lp_theta_star = log_prob_func(theta_star.reshape(1, -1))[0]
 
         accept_prob = np.minimum(1.0, np.exp(lp_theta_star - lp_theta))
-        accept = rng.binomial(1, accept_prob)
+        accept = int(rng.random() < accept_prob)
 
         return (theta_star if accept else theta), accept
 
