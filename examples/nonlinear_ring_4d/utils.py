@@ -21,6 +21,6 @@ def get_actions(x: np.ndarray) -> np.ndarray:
         axis = (i, i + 1)
         action = np.sum(np.square(z[:, axis]), axis=1)
         actions.append(action)
-        
+
     actions = np.stack(actions, axis=-1)
     return actions

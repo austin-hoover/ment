@@ -41,7 +41,9 @@ class HistogramND:
         if self.values is None:
             self.values = np.zeros(self.shape)
 
-        self.bin_sizes = [self.coords[i][1] - self.coords[i][0] for i in range(self.ndim)]
+        self.bin_sizes = [
+            self.coords[i][1] - self.coords[i][0] for i in range(self.ndim)
+        ]
         self.bin_volume = np.prod(self.bin_sizes)
         self.grid_shape = tuple([len(c) for c in self.coords])
         self.grid_points = None
@@ -56,12 +58,14 @@ class HistogramND:
         self.thresh_type = thresh_type
 
     def sample(self, size: int, noise: float = 0.0) -> np.ndarray:
-        return _sample_grid(values=self.values, edges=self.edges, size=size, noise=noise)
+        return _sample_grid(
+            values=self.values, edges=self.edges, size=size, noise=noise
+        )
 
     def cov(self) -> np.ndarray:
         if self.ndim > 2:
             raise NotImplementedError
-            
+
         return _get_hist_cov_2d(self)
 
     def copy(self) -> Self:
@@ -157,7 +161,9 @@ class Histogram1D:
         self.thresh_type = thresh_type
 
     def sample(self, size: int, noise: float = 0.0) -> np.ndarray:
-        return _sample_grid(values=self.values, edges=self.edges, size=size, noise=noise)
+        return _sample_grid(
+            values=self.values, edges=self.edges, size=size, noise=noise
+        )
 
     def var(self) -> float:
         values_sum = np.sum(self.values)
@@ -166,13 +172,13 @@ class Histogram1D:
 
         x = np.copy(self.coords)
         f = np.copy(self.values)
-        x_avg = np.average(x, weights=f)   
-        x_var = np.average((x - x_avg)**2, weights=f)
+        x_avg = np.average(x, weights=f)
+        x_var = np.average((x - x_avg) ** 2, weights=f)
         return x_var
 
     def std(self) -> float:
         return np.sqrt(self.var())
-        
+
     def copy(self) -> Self:
         return copy.deepcopy(self)
 
@@ -218,10 +224,12 @@ class Histogram1D:
         return self.bin(x)
 
 
-def _sample_grid(values: np.ndarray, edges: list[np.ndarray], size: int = 100, noise: float = 0.0) -> np.ndarray:
+def _sample_grid(
+    values: np.ndarray, edges: list[np.ndarray], size: int = 100, noise: float = 0.0
+) -> np.ndarray:
     if np.ndim(edges) == 1:
-        edges= [edges]
-        
+        edges = [edges]
+
     idx = np.flatnonzero(values)
     pdf = values.ravel()[idx]
     pdf = pdf / np.sum(pdf)
@@ -244,9 +252,9 @@ def _get_hist_cov_2d(hist: HistogramND) -> np.ndarray:
     values = hist.values
     coords = hist.coords
     ndim = values.ndim
-        
+
     S = np.zeros((ndim, ndim))
-    
+
     values_sum = np.sum(values)
     if values_sum <= 0.0:
         return S

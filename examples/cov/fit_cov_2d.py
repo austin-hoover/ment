@@ -78,13 +78,13 @@ projections = simulate(x_true, transforms, diagnostics)
 
 # Fit covariance matrix
 # --------------------------------------------------------------------------------------
-    
+
 fitter = ment.CholeskyCovFitter(
-    ndim=ndim, 
+    ndim=ndim,
     transforms=transforms,
     projections=projections,
     nsamp=args.nsamp,
-    bound=1.00e+06,
+    bound=1.00e06,
     verbose=True,
 )
 cov_matrix, fit_results = fitter.fit(iters=args.iters, method=args.method)
@@ -100,11 +100,11 @@ projections_pred = unravel(simulate(x, fitter.transforms, fitter.diagnostics))
 projections_meas = unravel(fitter.projections)
 
 fig, axs = plt.subplots(
-    ncols=args.nmeas, 
-    figsize=(11.0, 1.0), 
+    ncols=args.nmeas,
+    figsize=(11.0, 1.0),
     sharey=True,
     sharex=True,
-    constrained_layout=True
+    constrained_layout=True,
 )
 for i, ax in enumerate(axs):
     values_pred = projections_pred[i].values
@@ -113,8 +113,3 @@ for i, ax in enumerate(axs):
     ax.plot(values_meas / values_meas.max(), color="black", lw=0.0, marker=".", ms=2.0)
 plt.savefig(os.path.join(output_dir, "fig_results.png"), dpi=300)
 plt.close()
-
-
-
-
-

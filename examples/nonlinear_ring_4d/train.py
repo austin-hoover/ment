@@ -38,10 +38,9 @@ parser.add_argument("--seed", type=int, default=12345)
 args = parser.parse_args()
 
 
-    
 # Setup
 # --------------------------------------------------------------------------------------
-    
+
 path = pathlib.Path(__file__)
 output_dir = os.path.join("outputs", path.stem)
 os.makedirs(output_dir, exist_ok=True)
@@ -52,7 +51,7 @@ rng = np.random.default_rng(args.seed)
 
 # Initial distribution
 # --------------------------------------------------------------------------------------
-    
+
 x_true = make_dist(args.dist_size, seed=args.seed)
 
 V_inv = ment.cov.normalization_matrix(np.cov(x_true.T), scale=True)
@@ -103,8 +102,12 @@ diag_grid_edges = [
 
 diagnostics = []
 for transform in transforms:
-    diagnostic_x = ment.HistogramND(edges=diag_grid_edges, axis=(0, 1), blur=args.diag_blur)
-    diagnostic_y = ment.HistogramND(edges=diag_grid_edges, axis=(2, 3), blur=args.diag_blur)
+    diagnostic_x = ment.HistogramND(
+        edges=diag_grid_edges, axis=(0, 1), blur=args.diag_blur
+    )
+    diagnostic_y = ment.HistogramND(
+        edges=diag_grid_edges, axis=(2, 3), blur=args.diag_blur
+    )
     diagnostics.append([diagnostic_x, diagnostic_y])
 
 
@@ -145,22 +148,27 @@ model = ment.MENT(
 # Training
 # --------------------------------------------------------------------------------------
 
+
 def plot_func(model):
     figs = []
 
     nsamp = args.plot_nsamp or args.nsamp
     x_true = make_dist(nsamp)
     x_pred = model.unnormalize(model.sample(nsamp))
-    projections_pred = ment.unravel(ment.simulate(x_pred, model.transforms, model.diagnostics))
-    projections_true = ment.unravel(ment.simulate(x_true, model.transforms, model.diagnostics))
+    projections_pred = ment.unravel(
+        ment.simulate(x_pred, model.transforms, model.diagnostics)
+    )
+    projections_true = ment.unravel(
+        ment.simulate(x_true, model.transforms, model.diagnostics)
+    )
 
     # Plot x-y projections
     ncols = len(projections_pred)
     for log in [False, True]:
         fig, axs = plt.subplots(
-            nrows=2, 
-            ncols=ncols, 
-            figsize=(ncols * 1.75, 3.2), 
+            nrows=2,
+            ncols=ncols,
+            figsize=(ncols * 1.75, 3.2),
             constrained_layout=True,
             sharex=True,
             sharey=True,
@@ -172,20 +180,20 @@ def plot_func(model):
             for i, projection in enumerate([projection_true, projection_pred]):
                 coords = projection.coords
                 values = projection.values.copy()
-    
+
                 # values = values / scale
                 values = values / np.max(values)
                 if log:
                     values = np.log10(values + 1.00e-15)
-    
+
                 vmax = 1.0
                 vmin = 0.0
                 if log:
                     vmax = +0.0
                     vmin = -3.0
-    
+
                 ax = axs[i, j]
-    
+
                 m = ax.pcolormesh(
                     coords[0],
                     coords[1],
@@ -208,10 +216,6 @@ def plot_func(model):
 eval_model = ment.train.Evaluator(128_000)
 
 trainer = ment.train.Trainer(
-    model, 
-    eval_func=eval_model, 
-    plot_func=plot_func, 
-    output_dir=output_dir
+    model, eval_func=eval_model, plot_func=plot_func, output_dir=output_dir
 )
 trainer.train(epochs=args.epochs, learning_rate=args.lr)
-

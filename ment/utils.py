@@ -20,7 +20,7 @@ def rotation_matrix(angle: float) -> np.ndarray:
     M = np.array(M)
     return M
 
-    
+
 def wrap_tqdm(iterable, verbose=True):
     return tqdm(iterable) if verbose else iterable
 

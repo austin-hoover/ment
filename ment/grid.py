@@ -14,4 +14,6 @@ def edges_to_coords(edges: np.ndarray) -> np.ndarray:
 
 
 def get_grid_points(grid_coords) -> np.ndarray:
-    return np.stack([C.ravel() for C in np.meshgrid(*grid_coords, indexing="ij")], axis=-1)
+    return np.stack(
+        [C.ravel() for C in np.meshgrid(*grid_coords, indexing="ij")], axis=-1
+    )

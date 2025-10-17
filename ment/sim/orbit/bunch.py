@@ -39,7 +39,9 @@ def get_bunch_coords(bunch: Bunch, axis: tuple[int, ...] = None) -> np.ndarray:
     return X[:, axis]
 
 
-def set_bunch_coords(bunch: Bunch, X: np.ndarray, axis: tuple[int, ...] = None) -> Bunch:
+def set_bunch_coords(
+    bunch: Bunch, X: np.ndarray, axis: tuple[int, ...] = None
+) -> Bunch:
     if axis is None:
         axis = tuple(range(6))
 

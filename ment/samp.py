@@ -19,7 +19,9 @@ def tqdm_wrapper(iterable, verbose=False):
 
 
 def sample_bins(values: np.ndarray, size: int, rng: np.random.Generator) -> np.ndarray:
-    return rng.choice(values.size, size, replace=True, p=(np.ravel(values) / np.sum(values)))
+    return rng.choice(
+        values.size, size, replace=True, p=(np.ravel(values) / np.sum(values))
+    )
 
 
 def sample_hist(
@@ -45,7 +47,9 @@ def sample_hist(
     return x
 
 
-def sample_hist_and_rebin(values: np.ndarray, size: int, rng: np.random.Generator) -> np.ndarray:
+def sample_hist_and_rebin(
+    values: np.ndarray, size: int, rng: np.random.Generator
+) -> np.ndarray:
     idx = sample_bins(values, size, rng=rng)
     edges = np.arange(values.size + 1) - 0.5
     values_out, _ = np.histogram(idx, bins=edges, density=False)
@@ -106,21 +110,21 @@ def sample_metropolis_hastings(
     ndarray
         Sampled points with burn-in points discarded. Shape is (size, ndim) if merge=True
         or (size * chains, chains, ndim) if merge=False.
-    """  
+    """
     debug = int(debug)
     rng = np.random.default_rng(seed)
     size = size + burnin
 
-    # Initialize list of points. From now on we each "point" is really a batch of 
+    # Initialize list of points. From now on we each "point" is really a batch of
     # size (nchains, ndim). Burnin-points will be discarded later.
-    points = np.empty((size, chains, ndim)) 
+    points = np.empty((size, chains, ndim))
 
     # Sample proposal points from a Gaussian distribution. (The means will be updated
     # during the random walk.)
     proposal_mean = np.zeros(ndim)
     if proposal_cov is None:
         proposal_cov = np.eye(ndim)
-        
+
     proposal_points = rng.multivariate_normal(
         proposal_mean, proposal_cov, size=(size - 1, chains)
     )
@@ -130,7 +134,7 @@ def sample_metropolis_hastings(
     if start is None:
         start = rng.multivariate_normal(proposal_mean, proposal_cov, size=chains)
         start *= 0.50
-        
+
     points[0] = start
 
     # Raise an error if any points give nan probability.
@@ -163,7 +167,9 @@ def sample_metropolis_hastings(
             n_total += chains
             acceptance_rate = n_total_accepted / n_total
             if debug > 1:
-                print("debug {:05.0f} acceptance_rate={:0.4f}".format(i, acceptance_rate))
+                print(
+                    "debug {:05.0f} acceptance_rate={:0.4f}".format(i, acceptance_rate)
+                )
 
         points[i] = points[i - 1]
         points[i][accept] = proposal_point[accept]
@@ -176,31 +182,44 @@ def sample_metropolis_hastings(
         for axis in range(ndim):
             x_chain_stds = [np.std(chain[:, axis]) for chain in points]
             x_chain_avgs = [np.mean(chain[:, axis]) for chain in points]
-            print(f"debug axis={axis} between-chain avg(x_chain_std) =", np.mean(x_chain_stds))
-            print(f"debug axis={axis} between-chain std(x_chain_std) =", np.std(x_chain_stds))
-            print(f"debug axis={axis} between-chain avg(x_chain_avg) =", np.mean(x_chain_avgs))
-            print(f"debug axis={axis} between-chain std(x_chain_avg) =", np.std(x_chain_avgs))
-    
+            print(
+                f"debug axis={axis} between-chain avg(x_chain_std) =",
+                np.mean(x_chain_stds),
+            )
+            print(
+                f"debug axis={axis} between-chain std(x_chain_std) =",
+                np.std(x_chain_stds),
+            )
+            print(
+                f"debug axis={axis} between-chain avg(x_chain_avg) =",
+                np.mean(x_chain_avgs),
+            )
+            print(
+                f"debug axis={axis} between-chain std(x_chain_avg) =",
+                np.std(x_chain_avgs),
+            )
+
             x_avg = np.mean(np.hstack([chain[:, axis] for chain in points]))
-            x_std = np.std( np.hstack([chain[:, axis] for chain in points]))
+            x_std = np.std(np.hstack([chain[:, axis] for chain in points]))
             print(f"debug axis={axis} x_std =", x_std)
             print(f"debug axis={axis} x_avg =", x_avg)
-
 
     # Option to return unmerged chains:
     if merge:
         points = points.reshape(points.shape[0] * points.shape[1], points.shape[2])
-    
+
     return points
 
 
 class Sampler:
-    def __init__(self, ndim: int, seed: int = None, verbose: int = 0, debug: bool = False) -> None:
+    def __init__(
+        self, ndim: int, seed: int = None, verbose: int = 0, debug: bool = False
+    ) -> None:
         self.ndim = ndim
         self.seed = seed
         self.verbose = verbose
         self.debug = debug
-        
+
         self.rng = np.random.default_rng(seed)
 
     def sample(self, prob_func: Callable, size: int) -> np.ndarray:
@@ -221,7 +240,7 @@ class MetropolisHastingsSampler(Sampler):
         shuffle: bool = False,
         noise_scale: float = None,
         noise_type: str = "uniform",
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.chains = chains
@@ -241,8 +260,8 @@ class MetropolisHastingsSampler(Sampler):
             x_add *= self.noise_scale
         elif self.noise_type == "gaussian":
             x_add = self.rng.normal(scale=self.noise_scale, size=x.shape)
-        return x + x_add            
-                
+        return x + x_add
+
     def sample(self, prob_func: Callable, size: int) -> np.ndarray:
         x = sample_metropolis_hastings(
             prob_func,
@@ -257,7 +276,7 @@ class MetropolisHastingsSampler(Sampler):
             verbose=self.verbose,
             debug=self.debug,
             seed=self.seed,
-        )        
+        )
         if self.shuffle:
             self.rng.shuffle(x)
         if self.noise_scale:
@@ -272,7 +291,7 @@ class GridSampler(Sampler):
         grid_shape: tuple[int, ...],
         noise: float = 0.0,
         store_grid_points: bool = True,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(ndim=len(grid_limits), **kwargs)
         self.grid_shape = grid_shape
@@ -296,7 +315,7 @@ class GridSampler(Sampler):
             return self.grid_points
         grid_points = get_grid_points(self.grid_coords)
         if self.store_grid_points:
-            self.grid_points = grid_points            
+            self.grid_points = grid_points
         return grid_points
 
     def sample(self, prob_func: Callable, size: int) -> np.ndarray:
@@ -316,13 +335,13 @@ class SliceGridSampler(Sampler):
         int_method: str = "grid",
         int_batches: int = 1,
         noise: float = 0.0,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(ndim=len(grid_limits), **kwargs)
         self.grid_shape = grid_shape
         self.grid_limits = grid_limits
         self.ndim = len(grid_limits)
-        
+
         self.proj_dim = proj_dim
         self.samp_dim = self.ndim - self.proj_dim
         self.noise = noise
@@ -371,7 +390,9 @@ class SliceGridSampler(Sampler):
             int_res = self.int_size ** (1.0 / self.int_dim)
             int_res = math.ceil(int_res)
             int_res = int(int_res)
-            int_coords = [np.linspace(xmin, xmax, int_res) for (xmin, xmax) in self.int_limits]
+            int_coords = [
+                np.linspace(xmin, xmax, int_res) for (xmin, xmax) in self.int_limits
+            ]
             int_points = get_grid_points(int_coords)
         elif self.int_method == "uniform":
             int_points = np.zeros((self.int_size, self.int_dim))
@@ -382,7 +403,9 @@ class SliceGridSampler(Sampler):
             int_points = np.zeros((self.int_size, self.int_dim))
             scale = [xmax for (xmin, xmax) in self.int_limits]
             for axis, (xmin, xmax) in zip(self.int_axis, self.int_limits):
-                int_points[:, axis] = 0.75 * self.rng.uniform(xmin, xmax, size=self.int_size)
+                int_points[:, axis] = 0.75 * self.rng.uniform(
+                    xmin, xmax, size=self.int_size
+                )
         else:
             raise ValueError("Invalid int_method")
         return int_points[: self.int_size]
@@ -426,7 +449,9 @@ class SliceGridSampler(Sampler):
                 if self.noise:
                     delta = ub - lb
                     x_loc[:, axis] += (
-                        self.noise * 0.5 * self.rng.uniform(-delta, delta, size=size_loc)
+                        self.noise
+                        * 0.5
+                        * self.rng.uniform(-delta, delta, size=size_loc)
                     )
 
             # Set evaluation points on projected subpsace.

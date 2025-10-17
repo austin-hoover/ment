@@ -84,15 +84,15 @@ for i in range(len(projections_meas)):
 
         ax = axs.flat[index]
         ax.plot(
-            proj_pred.coords, 
-            proj_pred.values / scale, 
+            proj_pred.coords,
+            proj_pred.values / scale,
             label="pred",
-            color="red", 
+            color="red",
             alpha=0.3,
         )
         ax.plot(
-            proj_meas.coords, 
-            proj_meas.values / scale, 
+            proj_meas.coords,
+            proj_meas.values / scale,
             label="meas",
             color="black",
             lw=0,
@@ -146,12 +146,12 @@ fig, axs = plt.subplots(
 )
 for j, axis in enumerate(axes_proj):
     values, edges = np.histogramdd(
-        x_pred[:, axis], 
-        bins=64, 
-        range=[limits[k] for k in axis], 
+        x_pred[:, axis],
+        bins=64,
+        range=[limits[k] for k in axis],
         density=True,
     )
-    
+
     ax = axs.flat[j]
     ax.pcolormesh(
         edges[0],
