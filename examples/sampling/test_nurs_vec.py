@@ -67,6 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("--dist", type=str, default="ring")
     parser.add_argument("--n", type=int, default=2000)
     parser.add_argument("--chains", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 
     path = pathlib.Path(__file__)
@@ -76,10 +77,10 @@ if __name__ == "__main__":
     log_prob_func = get_log_prob_func(args.dist)
 
     ndim = 2
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(args.seed)
     nchains = args.chains
     ndraws = args.n // nchains
-    theta_init = rng.normal(size=(nchains, ndim))
+    theta_init = np.zeros((nchains, ndim))
 
     draws, accepts, depths = nurs.nurs_vectorized(
         rng=rng,

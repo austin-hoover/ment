@@ -68,6 +68,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dist", type=str, default="ring")
     parser.add_argument("--n", type=int, default=2000)
+    parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 
     path = pathlib.Path(__file__)
@@ -77,8 +78,8 @@ if __name__ == "__main__":
     log_prob_func = get_log_prob_func(args.dist)
 
     ndim = 2
-    rng = np.random.default_rng()
-    theta_init = rng.normal(size=ndim)
+    rng = np.random.default_rng(args.seed)
+    theta_init = np.zeros(ndim)
     draws, accepts, depths = nurs.nurs(
         rng=rng,
         log_prob_func=log_prob_func,
