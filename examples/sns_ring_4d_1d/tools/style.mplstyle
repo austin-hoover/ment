@@ -68,4 +68,3 @@ ytick.minor.pad: 2.0
 ytick.minor.size: 2.0
 ytick.minor.width: 0.48
 ytick.minor.visible: True
-

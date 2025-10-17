@@ -19,7 +19,7 @@ def track_bunch(
     lattice: AccLattice,
     index_start: int = None,
     index_stop: int = None,
-    **kws,
+    **kws
 ) -> Bunch:
     if index_start is None:
         index_start = 0
