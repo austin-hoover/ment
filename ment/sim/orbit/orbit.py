@@ -15,7 +15,11 @@ from .bunch import reverse_bunch
 
 
 def track_bunch(
-    bunch: Bunch, lattice: AccLattice, index_start: int = None, index_stop: int = None, **kws
+    bunch: Bunch,
+    lattice: AccLattice,
+    index_start: int = None,
+    index_stop: int = None,
+    **kws,
 ) -> Bunch:
     if index_start is None:
         index_start = 0

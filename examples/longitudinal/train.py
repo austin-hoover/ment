@@ -1,15 +1,16 @@
 """Reconstruct longitudinal phase space distribution from turn-by-turn projections.
 
-This script uses a PyORBIT [https://github.com/PyORBIT-Collaboration/PyORBIT3] lattice 
+This script uses a PyORBIT [https://github.com/PyORBIT-Collaboration/PyORBIT3] lattice
 model consisting of a harmonic RF cavity surrounded by two drifts. Things are a bit slow
 because we have to repeatedly convert between NumPy arrays and Bunch objects, but it works.
 
 Note that one MENT iteration requires simulating all projectionos. If projectiono k
 is measured after k turns, then we must first track the bunch 1 turn, then resample
 and track 2 turns, then resample and track 3 turns, etc. In total, we must track
-n * (n + 1) / 2 turns. For a significant number of turns, ART may be the better 
+n * (n + 1) / 2 turns. For a significant number of turns, ART may be the better
 option.
 """
+
 import os
 import pathlib
 
@@ -51,6 +52,7 @@ x_true[:, 1] = rng.normal(scale=0.0025, size=x_true.shape[0])
 # Forward model
 # --------------------------------------------------------------------------------------
 
+
 def get_part_coords(bunch: Bunch, index: int) -> list[float]:
     x = bunch.x(index)
     y = bunch.y(index)
@@ -81,7 +83,9 @@ def get_bunch_coords(bunch: Bunch, axis: tuple[int, ...] = None) -> np.ndarray:
     return x
 
 
-def set_bunch_coords(bunch: Bunch, x: np.ndarray, axis: tuple[int, ...] = None) -> Bunch:
+def set_bunch_coords(
+    bunch: Bunch, x: np.ndarray, axis: tuple[int, ...] = None
+) -> Bunch:
     if axis is None:
         axis = tuple(range(6))
 
@@ -128,7 +132,7 @@ class ORBITTransform:
         bunch = self.track_bunch()
         x_out = get_bunch_coords(bunch, axis=self.axis)
         return x_out
-    
+
 
 # Create accelerator lattice (drift, rf, drift)
 drift_node_1 = DriftTEAPOT()
@@ -142,7 +146,9 @@ rf_length = 0.0
 rf_synchronous_de = 0.0
 rf_voltage = 300.0e-06
 rf_phase = 0.0
-rf_node = Harmonic_RFNode(z_to_phi, rf_synchronous_de, rf_hnum, rf_voltage, rf_phase, rf_length)
+rf_node = Harmonic_RFNode(
+    z_to_phi, rf_synchronous_de, rf_hnum, rf_voltage, rf_phase, rf_length
+)
 
 lattice = TEAPOT_Ring()
 lattice.addNode(drift_node_1)
@@ -178,11 +184,8 @@ for nturns in turns:
     transform = ORBITTransform(lattice, bunch, nturns=nturns, axis=(4, 5))
     transforms.append(transform)
 
-limits = [
-    (-0.5 * lattice.getLength(), +0.5 * lattice.getLength()), 
-    (-0.030, 0.030)
-]
-    
+limits = [(-0.5 * lattice.getLength(), +0.5 * lattice.getLength()), (-0.030, 0.030)]
+
 # Create a list of histogram diagnostics for each transform.
 bin_edges = np.linspace(limits[0][0], limits[0][1], 100)
 diagnostics = []
@@ -235,19 +238,25 @@ def plot_model(model):
     projections_pred = ment.utils.unravel(projections_pred)
 
     fig, axs = plt.subplots(
-        ncols=nmeas, figsize=(11.0, 1.0), sharey=True, sharex=True, constrained_layout=True
+        ncols=nmeas,
+        figsize=(11.0, 1.0),
+        sharey=True,
+        sharex=True,
+        constrained_layout=True,
     )
     for i, ax in enumerate(axs):
         values_pred = projections_pred[i].values
         values_true = projections_true[i].values
         ax.plot(values_pred / values_true.max(), color="lightgray")
-        ax.plot(values_true / values_true.max(), color="black", lw=0.0, marker=".", ms=2.0)
+        ax.plot(
+            values_true / values_true.max(), color="black", lw=0.0, marker=".", ms=2.0
+        )
     return fig
 
 
 for epoch in range(4):
     print("epoch =", epoch)
-    
+
     if epoch > 0:
         model.gauss_seidel_step(learning_rate=0.90)
 
@@ -264,4 +273,3 @@ for ax, x in zip(axs, [x_pred, x_true]):
     ax.hist2d(x[:, 0], x[:, 1], bins=100, range=limits)
 fig.savefig(os.path.join(output_dir, f"fig_dist_{epoch:02.0f}.png"))
 plt.close()
-

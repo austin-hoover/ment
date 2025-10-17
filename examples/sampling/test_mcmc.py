@@ -109,5 +109,3 @@ if args.plot:
         s=0.25,
     )
     plt.show()
-
-

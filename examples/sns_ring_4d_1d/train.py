@@ -3,6 +3,7 @@
 Usage:
     python train.py --samp-res=40
 """
+
 import argparse
 import os
 import pathlib
@@ -40,7 +41,7 @@ args = parser.parse_args()
 
 input_dirs = {}
 input_dirs["optics"] = "./outputs/00_save_optics"
-input_dirs["data"]   = "./outputs/01_proc_data"
+input_dirs["data"] = "./outputs/01_proc_data"
 
 path = pathlib.Path(__file__)
 output_dir = os.path.join("outputs", path.stem)
@@ -63,7 +64,7 @@ for dim in ["x", "y", "u"]:
         coords, values = np.loadtxt(filename).T
         profile = Profile(values=values, coords=coords)
         profiles[dim].append(profile)
-        
+
 
 # Fit covariance matrix
 # --------------------------------------------------------------------------------------
@@ -103,7 +104,9 @@ for index, transform in enumerate(transforms):
     projection_y = ment.Histogram1D(coords=coords_y, values=values_y, axis=2)
 
     direction = np.array([+1.0, 0.0, -1.0, 0.0]) / np.sqrt(2.0)
-    projection_u = ment.Histogram1D(coords=coords_u, values=values_u, direction=direction, axis=None)
+    projection_u = ment.Histogram1D(
+        coords=coords_u, values=values_u, direction=direction, axis=None
+    )
 
     projection_x.normalize()
     projection_y.normalize()

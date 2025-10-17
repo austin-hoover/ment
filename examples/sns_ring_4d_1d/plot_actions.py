@@ -84,6 +84,7 @@ z_pred = np.copy(z)
 # Plot actions
 # --------------------------------------------------------------------------------------
 
+
 def make_joint_grid(figwidth=5.0, panel_width=0.33) -> tuple:
     fig, axs = plt.subplots(
         ncols=2,
@@ -100,7 +101,9 @@ def make_joint_grid(figwidth=5.0, panel_width=0.33) -> tuple:
     return fig, axs
 
 
-def plot_hist(values: np.ndarray, edges: list[np.ndarray], contours: int = 0, **plot_kws) -> tuple:
+def plot_hist(
+    values: np.ndarray, edges: list[np.ndarray], contours: int = 0, **plot_kws
+) -> tuple:
     fig, axs = make_joint_grid()
 
     ax = axs[1, 0]

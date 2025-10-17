@@ -33,6 +33,7 @@ x_true = x_true + rng.normal(size=x_true.shape, scale=0.25)
 # Create a list of transforms. Each transform is a function with the call signature
 # `transform(x: np.ndarray) -> np.ndarray`.
 
+
 def rotation_matrix(angle: float) -> np.ndarray:
     M = [[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]]
     M = np.array(M)
@@ -110,17 +111,19 @@ def plot_model(model):
     )
 
     fig, axs = plt.subplots(
-        ncols=nmeas, 
-        figsize=(11.0, 1.0), 
+        ncols=nmeas,
+        figsize=(11.0, 1.0),
         sharey=True,
         sharex=True,
-        constrained_layout=True
+        constrained_layout=True,
     )
     for i, ax in enumerate(axs):
         values_pred = projections_pred[i].values
         values_true = projections_true[i].values
         ax.plot(values_pred / values_true.max(), color="lightgray")
-        ax.plot(values_true / values_true.max(), color="black", lw=0.0, marker=".", ms=2.0)
+        ax.plot(
+            values_true / values_true.max(), color="black", lw=0.0, marker=".", ms=2.0
+        )
     return fig
 
 

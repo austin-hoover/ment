@@ -1,4 +1,5 @@
 """Covariance matrix analysis and fitting routines."""
+
 import numpy as np
 
 
@@ -36,7 +37,9 @@ def normalization_matrix_from_eigvecs(eigvecs: np.ndarray) -> np.ndarray:
     return np.linalg.inv(V)
 
 
-def normalization_matrix(S: np.ndarray, scale: bool = False, block_diag: bool = False) -> np.ndarray:
+def normalization_matrix(
+    S: np.ndarray, scale: bool = False, block_diag: bool = False
+) -> np.ndarray:
     """Return normalization matrix V^{-1} from covariance matrix S.
 
     Parameters
@@ -48,6 +51,7 @@ def normalization_matrix(S: np.ndarray, scale: bool = False, block_diag: bool = 
     block_diag : bool
         If true, normalize only 2x2 block-diagonal elements (x-x', y-y', etc.).
     """
+
     def _normalization_matrix(S: np.ndarray, scale: bool = False) -> np.ndarray:
         S = np.copy(S)
         U = unit_symplectic_matrix(S.shape[0])
@@ -72,7 +76,9 @@ def normalization_matrix(S: np.ndarray, scale: bool = False, block_diag: bool = 
     V_inv = np.eye(ndim)
     if block_diag:
         for i in range(0, ndim, 2):
-            V_inv[i: i + 2, i: i + 2] = _normalization_matrix(S[i: i + 2, i: i + 2], scale=scale)
+            V_inv[i : i + 2, i : i + 2] = _normalization_matrix(
+                S[i : i + 2, i : i + 2], scale=scale
+            )
     else:
         V_inv = _normalization_matrix(S, scale=scale)
     return V_inv
@@ -95,7 +101,7 @@ def compute_projected_emittances(S: np.ndarray) -> tuple[float, float]:
 def compute_intrinsic_emittances(S: np.ndarray) -> tuple[float, float]:
     """Compute intrinsic emittances eps1, eps2, ... from covariance matrix."""
     assert S.shape[0] == S.shape[1] == 4
-    
+
     S = np.copy(S[:4, :4])
     U = unit_symplectic_matrix(4)
     SU = np.matmul(S, U)
@@ -111,7 +117,7 @@ def compute_twiss(S: np.ndarray) -> list[float] | list[list[float]]:
     """Compute twiss parameters [(alpha_x, beta_x), (alpha_y, beta_y), ...] from covariance matrix."""
     parameters = []
     for i in range(0, S.shape[0], 2):
-        emittance = compute_emittance(S[i:i+2, i:i+2])
+        emittance = compute_emittance(S[i : i + 2, i : i + 2])
         alpha = -S[i, i + 1] / emittance
         beta = S[i, i] / emittance
         parameters.append([alpha, beta])
@@ -136,7 +142,7 @@ def rms_ellipse_params(S: np.ndarray) -> tuple[float, float, float]:
     ----------
     S : ndarray, shape (2, 2)
         A two-dimensional covariance matrix.
-        
+
     Returns
     -------
     c1, c2 : float
@@ -145,26 +151,27 @@ def rms_ellipse_params(S: np.ndarray) -> tuple[float, float, float]:
         The tilt angle below the x axis [radians].
     """
     (i, j) = (0, 1)
-    
+
     sii = S[i, i]
     sjj = S[j, j]
     sij = S[i, j]
-    
+
     angle = -0.5 * np.arctan2(2 * sij, sii - sjj)
-    
+
     _sin = np.sin(angle)
     _cos = np.cos(angle)
     _sin2 = _sin**2
     _cos2 = _cos**2
-    
+
     c1 = np.sqrt(abs(sii * _cos2 + sjj * _sin2 - 2 * sij * _sin * _cos))
     c2 = np.sqrt(abs(sii * _sin2 + sjj * _cos2 + 2 * sij * _sin * _cos))
-    
+
     return (c1, c2, angle)
 
 
 # Fitting
 # --------------------------------------------------------------------------------------
+
 
 def cov_vec_to_mat(vec: np.ndarray) -> np.ndarray:
     (S11, S22, S12, S33, S44, S34, S13, S23, S14, S24) = vec
@@ -218,7 +225,9 @@ def fit_cov(moments: np.ndarray, tmats: np.ndarray) -> tuple[np.ndarray, np.ndar
     for M, (sig_xx, sig_yy, sig_xy) in zip(tmats, moments):
         Axx.append([M[0, 0] ** 2, M[0, 1] ** 2, 2 * M[0, 0] * M[0, 1]])
         Ayy.append([M[2, 2] ** 2, M[2, 3] ** 2, 2 * M[2, 2] * M[2, 3]])
-        Axy.append([M[0, 0] * M[2, 2], M[0, 1] * M[2, 2], M[0, 0] * M[2, 3], M[0, 1] * M[2, 3]])
+        Axy.append(
+            [M[0, 0] * M[2, 2], M[0, 1] * M[2, 2], M[0, 0] * M[2, 3], M[0, 1] * M[2, 3]]
+        )
         bxx.append(sig_xx)
         byy.append(sig_yy)
         bxy.append(sig_xy)
@@ -264,13 +273,17 @@ def compute_projected_emittance_std(S: np.ndarray, C: np.ndarray) -> float:
     return eps_std
 
 
-def compute_projected_emittance_stds(S: np.ndarray, C: np.ndarray) -> tuple[float, float]:
+def compute_projected_emittance_stds(
+    S: np.ndarray, C: np.ndarray
+) -> tuple[float, float]:
     eps_x_std = compute_projected_emittance_std(S[0:2, 0:2], C[0:3, 0:3])
     eps_y_std = compute_projected_emittance_std(S[2:4, 2:4], C[3:6, 3:6])
     return (eps_x_std, eps_y_std)
 
 
-def compute_intrinsic_emittance_stds(S: np.ndarray, C: np.ndarray) -> tuple[float, float]:
+def compute_intrinsic_emittance_stds(
+    S: np.ndarray, C: np.ndarray
+) -> tuple[float, float]:
     eps_1, eps_2 = compute_intrinsic_emittances(S)
 
     Cxx = C[0:3, 0:3]
@@ -291,21 +304,62 @@ def compute_intrinsic_emittance_stds(S: np.ndarray, C: np.ndarray) -> tuple[floa
 
     grad_g = np.zeros((10, 2))
 
-    grad_g[0, 0] = -S33 * S24**2 + 2.0 * S23 * S24 * S34 - S44 * S23**2 + S22 * (S33 * S44 - S34**2)
-    grad_g[1, 0] = -S33 * S14**2 + 2.0 * S13 * S14 * S34 - S44 * S13**2 + S11 * (S33 * S44 - S34**2)
-    grad_g[2, 0] = 2.0 * (S14 * (S24 * S33 - S23 * S34) + S13 * (-S24 * S34 + S23 * S44) + S12 * (S34**2 - S33 * S44))
-    grad_g[3, 0] = -S22 * S14**2 + 2.0 * S12 * S14 * S24 - S44 * S12**2 + S11 * (S22 * S44 - S24**2)
-    grad_g[4, 0] = -S22 * S13**2 + 2.0 * S12 * S13 * S23 - S33 * S12**2 + S11 * (S22 * S33 - S23**2)
+    grad_g[0, 0] = (
+        -S33 * S24**2
+        + 2.0 * S23 * S24 * S34
+        - S44 * S23**2
+        + S22 * (S33 * S44 - S34**2)
+    )
+    grad_g[1, 0] = (
+        -S33 * S14**2
+        + 2.0 * S13 * S14 * S34
+        - S44 * S13**2
+        + S11 * (S33 * S44 - S34**2)
+    )
+    grad_g[2, 0] = 2.0 * (
+        S14 * (S24 * S33 - S23 * S34)
+        + S13 * (-S24 * S34 + S23 * S44)
+        + S12 * (S34**2 - S33 * S44)
+    )
+    grad_g[3, 0] = (
+        -S22 * S14**2
+        + 2.0 * S12 * S14 * S24
+        - S44 * S12**2
+        + S11 * (S22 * S44 - S24**2)
+    )
+    grad_g[4, 0] = (
+        -S22 * S13**2
+        + 2.0 * S12 * S13 * S23
+        - S33 * S12**2
+        + S11 * (S22 * S33 - S23**2)
+    )
     grad_g[5, 0] = 2.0 * (
-        -S12 * S14 * S23 + S13 * (S14 * S22 - S12 * S24) + S34 * S12**2 + S11 * (S23 * S24 - S22 * S34)
+        -S12 * S14 * S23
+        + S13 * (S14 * S22 - S12 * S24)
+        + S34 * S12**2
+        + S11 * (S23 * S24 - S22 * S34)
     )
-    grad_g[6, 0] = 2.0 * (S14 * (-S23 * S24 + S22 * S34) + S13 * (S24**2 - S22 * S44) + S12 * (-S24 * S34 + S23 * S44))
+    grad_g[6, 0] = 2.0 * (
+        S14 * (-S23 * S24 + S22 * S34)
+        + S13 * (S24**2 - S22 * S44)
+        + S12 * (-S24 * S34 + S23 * S44)
+    )
     grad_g[7, 0] = 2.0 * (
-        S23 * S14**2 - S14 * (S13 * S24 + S12 * S34) + S12 * S13 * S44 + S11 * (S24 * S34 - S23 * S44)
+        S23 * S14**2
+        - S14 * (S13 * S24 + S12 * S34)
+        + S12 * S13 * S44
+        + S11 * (S24 * S34 - S23 * S44)
     )
-    grad_g[8, 0] = 2.0 * (S14 * (S23**2 - S22 * S33) + S13 * (-S23 * S24 + S22 * S34) + S12 * (S24 * S33 - S23 * S34))
+    grad_g[8, 0] = 2.0 * (
+        S14 * (S23**2 - S22 * S33)
+        + S13 * (-S23 * S24 + S22 * S34)
+        + S12 * (S24 * S33 - S23 * S34)
+    )
     grad_g[9, 0] = 2.0 * (
-        S24 * S13**2 + S12 * S14 * S33 - S13 * (S14 * S23 + S12 * S34) + S11 * (-S24 * S33 + S23 * S34)
+        S24 * S13**2
+        + S12 * S14 * S33
+        - S13 * (S14 * S23 + S12 * S34)
+        + S11 * (-S24 * S33 + S23 * S34)
     )
 
     grad_g[0, 1] = -2.0 * S22
@@ -375,7 +429,9 @@ def compute_twiss_stds_2x2(S: np.ndarray, C: np.ndarray) -> tuple[float, float]:
     return (alpha_std, beta_std)
 
 
-def compute_twiss_stds(S: np.ndarray, C: np.ndarray) -> tuple[float, float, float, float]:
+def compute_twiss_stds(
+    S: np.ndarray, C: np.ndarray
+) -> tuple[float, float, float, float]:
     (alpha_x_std, beta_x_std) = compute_twiss_stds_2x2(S[0:2, 0:2], C[0:3, 0:3])
     (alpha_y_std, beta_y_std) = compute_twiss_stds_2x2(S[2:4, 2:4], C[3:6, 3:6])
     return (alpha_x_std, beta_x_std, alpha_y_std, beta_y_std)

@@ -134,7 +134,7 @@ class MENT:
         integration_loop : bool
             If True, compute projection by looping over all points on the M-dimensional
             projection axis;  at each point, compute the (N - M)-dimensional integral.
-            If False, compute projection by evaluating all points at once on an 
+            If False, compute projection by evaluating all points at once on an
             N-dimensional grid, then summing over the (N - M) integration axes.
         store_integration_points : bool
             Whether to keep the integration points in memory.
@@ -207,9 +207,13 @@ class MENT:
         for i in range(len(self.lagrange_functions)):
             for j in range(len(self.lagrange_functions[i])):
                 self.lagrange_functions[i][j].interp_kws = kws
-                self.lagrange_functions[i][j].set_values(self.lagrange_functions[i][j].values)
+                self.lagrange_functions[i][j].set_values(
+                    self.lagrange_functions[i][j].values
+                )
 
-    def set_projections(self, projections: list[list[Histogram]]) -> list[list[Histogram]]:
+    def set_projections(
+        self, projections: list[list[Histogram]]
+    ) -> list[list[Histogram]]:
         """Set list of measured projections (histograms)."""
         self.projections = projections
         if self.projections is None:
@@ -220,7 +224,7 @@ class MENT:
             for j in range(len(self.projections[i])):
                 if self.projections[i][j] is not None:
                     self.projections[i][j].normalize()
-                    
+
         return self.projections
 
     def init_lagrange_functions(self, **interp_kws) -> list[list[np.ndarray]]:
@@ -271,11 +275,13 @@ class MENT:
         prob = np.ones(z.shape[0])
         for index, transform in enumerate(self.transforms):
             u = transform(x)
-            for diag, lfunc in zip(self.diagnostics[index], self.lagrange_functions[index]):
+            for diag, lfunc in zip(
+                self.diagnostics[index], self.lagrange_functions[index]
+            ):
                 prob *= lfunc(diag.project(u))
-                
+
         prob = prob * self.prior.prob(z)
-        
+
         if squeeze:
             prob = np.squeeze(prob)
         return prob
@@ -285,6 +291,7 @@ class MENT:
 
         Key word arguments go to `self.sampler`.
         """
+
         def prob_func(z: np.ndarray) -> np.ndarray:
             return self.prob(z, squeeze=False)
 
@@ -304,7 +311,9 @@ class MENT:
         diagnostic = self.diagnostics[index][diag_index]
         return diagnostic.get_grid_points()
 
-    def get_integration_points(self, index: int, diag_index: int, method: str = "grid") -> np.ndarray:
+    def get_integration_points(
+        self, index: int, diag_index: int, method: str = "grid"
+    ) -> np.ndarray:
         """Return integration points for specific diagnostic."""
         if self.integration_points is not None:
             return self.integration_points
@@ -315,7 +324,9 @@ class MENT:
         if type(projection_axis) is int:
             projection_axis = (projection_axis,)
 
-        integration_axis = tuple([axis for axis in range(self.ndim) if axis not in projection_axis])
+        integration_axis = tuple(
+            [axis for axis in range(self.ndim) if axis not in projection_axis]
+        )
         integration_ndim = len(integration_axis)
         integration_limits = self.integration_limits[index][diag_index]
         integration_size = self.integration_size
@@ -325,8 +336,12 @@ class MENT:
             integration_limits = [integration_limits]
 
         if method == "grid":
-            integration_grid_resolution = int(integration_size ** (1.0 / integration_ndim))
-            integration_grid_shape = tuple(integration_ndim * [integration_grid_resolution])
+            integration_grid_resolution = int(
+                integration_size ** (1.0 / integration_ndim)
+            )
+            integration_grid_shape = tuple(
+                integration_ndim * [integration_grid_resolution]
+            )
             integration_grid_coords = [
                 np.linspace(
                     integration_limits[i][0],
@@ -373,11 +388,13 @@ class MENT:
         transform = self.transforms[index]
         diagnostic = self.diagnostics[index][diag_index]
         diagnostic.values *= 0.0
-        
+
         values_proj = diagnostic.values.copy()
-        
+
         if self.mode in ["sample", "forward"]:
-            values_proj = diagnostic(transform(self.unnormalize(self.sample(self.nsamp))))
+            values_proj = diagnostic(
+                transform(self.unnormalize(self.sample(self.nsamp)))
+            )
 
         elif self.mode in ["integrate", "reverse"]:
             # Get projection grid axis.
@@ -387,7 +404,9 @@ class MENT:
             projection_ndim = len(projection_axis)
 
             # Get integration grid axis and limits.
-            integration_axis = [axis for axis in range(self.ndim) if axis not in projection_axis]
+            integration_axis = [
+                axis for axis in range(self.ndim) if axis not in projection_axis
+            ]
             integration_axis = tuple(integration_axis)
             integration_ndim = len(integration_axis)
             integration_limits = self.integration_limits[index][diag_index]
@@ -396,7 +415,7 @@ class MENT:
                 # Get points on integration and projection grids.
                 projection_points = self.get_projection_points(index, diag_index)
                 integration_points = self.get_integration_points(index, diag_index)
-    
+
                 # Initialize array of integration points (u).
                 u = np.zeros((integration_points.shape[0], self.ndim))
                 for k, axis in enumerate(integration_axis):
@@ -404,22 +423,24 @@ class MENT:
                         u[:, axis] = integration_points
                     else:
                         u[:, axis] = integration_points[:, k]
-    
+
                 # Initialize array of projected densities (values_proj).
                 values_proj = np.zeros(projection_points.shape[0])
-                for i, point in enumerate(wrap_tqdm(projection_points, self.verbose > 1)):
+                for i, point in enumerate(
+                    wrap_tqdm(projection_points, self.verbose > 1)
+                ):
                     # Set values of u along projection axis.
                     for k, axis in enumerate(projection_axis):
                         if diagnostic.ndim == 1:
                             u[:, axis] = point
                         else:
                             u[:, axis] = point[k]
-    
+
                     # Compute the probability density at the integration points.
                     # Here we assume a volume-preserving transformation with Jacobian
                     # determinant equal to 1, such that p(x) = p(u).
                     prob = self.prob(self.normalize(transform.inverse(u)))
-    
+
                     # Sum over all integration points.
                     values_proj[i] = np.sum(prob)
 
@@ -432,17 +453,23 @@ class MENT:
                 projection_grid_coords = diagnostic.coords
                 if np.ndim(projection_grid_coords[0]) == 0:
                     projection_grid_coords = [projection_grid_coords]
-                    
+
                 # Get coordinates along each axis of integration grid.
-                integration_axis = [axis for axis in range(self.ndim) if axis not in projection_axis]
+                integration_axis = [
+                    axis for axis in range(self.ndim) if axis not in projection_axis
+                ]
                 integration_axis = tuple(integration_axis)
                 integration_ndim = len(integration_axis)
-                integration_limits = self.integration_limits[index][diag_index]        
+                integration_limits = self.integration_limits[index][diag_index]
                 if (integration_ndim == 1) and (np.ndim(integration_limits) == 1):
                     integration_limits = [integration_limits]
-        
-                integration_grid_resolution = int(self.integration_size ** (1.0 / integration_ndim))
-                integration_grid_shape = tuple(integration_ndim * [integration_grid_resolution])
+
+                integration_grid_resolution = int(
+                    self.integration_size ** (1.0 / integration_ndim)
+                )
+                integration_grid_shape = tuple(
+                    integration_ndim * [integration_grid_resolution]
+                )
                 integration_grid_coords = [
                     np.linspace(
                         integration_limits[i][0],
@@ -460,13 +487,12 @@ class MENT:
                     grid_coords[i] = _coords
 
                 grid_shape = tuple([len(c) for c in grid_coords])
-                    
+
                 grid_points = get_grid_points(grid_coords)
                 grid_values = self.prob(self.normalize(transform.inverse(grid_points)))
                 grid_values = grid_values.reshape(grid_shape)
                 values_proj = np.sum(grid_values, axis=integration_axis)
 
-            
             # Reshape the projected density array.
             if diagnostic.ndim > 1:
                 values_proj = values_proj.reshape(diagnostic.shape)
@@ -482,9 +508,9 @@ class MENT:
         return diagnostic.copy()
 
     def gauss_seidel_step(
-        self, 
-        learning_rate: float = 1.0, 
-        thresh: float = 0.0, 
+        self,
+        learning_rate: float = 1.0,
+        thresh: float = 0.0,
         thresh_type: str = "abs",
     ) -> None:
         """Perform Gauss-Seidel step.
@@ -493,8 +519,8 @@ class MENT:
 
         h_k *= (1 - omega) + omega * (g_k_meas / g_k_pred)
 
-        where h = exp(lambda) is the Lagrange multiplier function, 
-        0 < omega <= 1 is a learning rate or damping parameter, g_k_meas 
+        where h = exp(lambda) is the Lagrange multiplier function,
+        0 < omega <= 1 is a learning rate or damping parameter, g_k_meas
         is the measured projection, and g_k_pred is the simulated projection
         using the current h functions.
 
@@ -545,7 +571,7 @@ class MENT:
                 idx = np.logical_and(values_meas > 0.0, values_pred > min_value)
                 ratio = np.ones(values_lagr.shape)
                 ratio[idx] = values_meas[idx] / values_pred[idx]
-                values_lagr *= (1.0 - learning_rate) + learning_rate * ratio 
+                values_lagr *= (1.0 - learning_rate) + learning_rate * ratio
 
                 # Reset
                 lagrange_function.values = values_lagr
@@ -556,7 +582,9 @@ class MENT:
 
     def parameters(self) -> np.ndarray:
         """Return lagrange multplier values."""
-        parameters = [lfunc.values.ravel() for lfunc in unravel(self.lagrange_functions)]
+        parameters = [
+            lfunc.values.ravel() for lfunc in unravel(self.lagrange_functions)
+        ]
         parameters = np.hstack(parameters)
         return parameters
 

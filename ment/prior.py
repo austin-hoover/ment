@@ -2,6 +2,7 @@
 
 Note that MENT priors do not need to be normalized!
 """
+
 from typing import Callable
 import numpy as np
 import scipy.special
@@ -13,7 +14,7 @@ from .samp import MetropolisHastingsSampler
 
 def sphere_volume(ndim: int, radius: float) -> float:
     factor = (np.pi ** (0.5 * ndim)) / scipy.special.gamma(1.0 + 0.5 * ndim)
-    return factor * (radius ** ndim)
+    return factor * (radius**ndim)
 
 
 class Prior:
@@ -42,17 +43,17 @@ class GaussianPrior(Prior):
         if self.trunc is not None:
             r = np.linalg.norm(x, axis=1)
             prob[r > self.trunc] = 0.0
-            
+
         return prob
 
-    def sample(self, size: int) -> np.ndarray:        
+    def sample(self, size: int) -> np.ndarray:
         if self.trunc is not None:
             warnings.warn("Using MCMC to generate approximate samples.")
-            
+
             chains = 1
             start = np.random.uniform(-self.scale, self.scale, size=(chains, self.ndim))
             proposal_cov = np.eye(self.ndim) * self.scale**2 * 1.0
-    
+
             sampler = MetropolisHastingsSampler(
                 ndim=self.ndim,
                 chains=chains,
@@ -60,11 +61,11 @@ class GaussianPrior(Prior):
                 start=start,
                 proposal_cov=proposal_cov,
                 shuffle=True,
-                verbose=0   
+                verbose=0,
             )
             x = sampler.sample(self.prob, size)
             return x
-            
+
         x = np.random.normal(size=(size, self.ndim))
         x = x * self.scale
         return x
@@ -72,9 +73,10 @@ class GaussianPrior(Prior):
 
 class RectangularTruncatedGaussianPrior(Prior):
     """Product of marginal truncated Gaussian priors (square boundary)."""
+
     def __init__(self, scale: np.ndarray, trunc: np.ndarray, **kws) -> None:
         super().__init__(**kws)
-        
+
         self.scale = scale
         if np.ndim(self.scale) == 0:
             self.scale = self.scale * np.ones(self.ndim)
@@ -82,25 +84,27 @@ class RectangularTruncatedGaussianPrior(Prior):
         self.trunc = trunc
         if np.ndim(self.trunc) == 0:
             self.trunc = self.trunc * np.ones(self.ndim)
-            
+
         self.marg_dists = []
         for i in range(self.ndim):
-            marg_dist = scipy.stats.truncnorm(-self.trunc[i], +self.trunc[i], scale=self.scale[i])
+            marg_dist = scipy.stats.truncnorm(
+                -self.trunc[i], +self.trunc[i], scale=self.scale[i]
+            )
             self.marg_dists.append(marg_dist)
-        
+
     def prob(self, x: np.ndarray) -> np.ndarray:
         prob = np.ones(x.shape[0])
         for j, marg_dist in enumerate(self.marg_dists):
             prob *= marg_dist.pdf(x[:, j])
         return prob
-    
-    def sample(self, size: int) -> np.ndarray:        
+
+    def sample(self, size: int) -> np.ndarray:
         x = np.zeros((size, self.ndim))
         for j, marg_dist in enumerate(self.marg_dists):
             x[:, j] = marg_dist.rvs(size)
         return x
 
-        
+
 class UniformPrior(Prior):
     def __init__(self, scale: float = 10.0, **kws) -> None:
         super().__init__(**kws)
@@ -124,7 +128,7 @@ class UniformSphericalPrior(Prior):
         super().__init__(**kws)
         self.scale = scale
         self.volume = sphere_volume(ndim=self.ndim, radius=self.scale)
-    
+
     def prob(self, x: np.ndarray) -> np.ndarray:
         prob = np.ones(x.shape[0]) / self.volume
         r = np.sqrt(np.sum(np.square(x), axis=1))

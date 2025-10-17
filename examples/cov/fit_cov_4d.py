@@ -1,4 +1,5 @@
 """Fit 4D covariance matrix to 2D measurements."""
+
 import argparse
 import os
 import pathlib
@@ -85,11 +86,11 @@ projections = simulate(x_true, transforms, diagnostics)
 
 # Run optimizer
 fitter = ment.CholeskyCovFitter(
-    ndim=ndim, 
+    ndim=ndim,
     transforms=transforms,
     projections=projections,
     nsamp=args.nsamp,
-    bound=1.00e+02,
+    bound=1.00e02,
     verbose=True,
 )
 cov_matrix, fit_result = fitter.fit(method=args.method, iters=args.iters)
@@ -105,14 +106,14 @@ def rms_ellipse_params(cov_matrix: np.ndarray) -> tuple[float, float, float]:
     sii = cov_matrix[0, 0]
     sjj = cov_matrix[1, 1]
     sij = cov_matrix[0, 1]
-    
+
     angle = -0.5 * np.arctan2(2 * sij, sii - sjj)
-    
+
     _sin = np.sin(angle)
     _cos = np.cos(angle)
     _sin2 = _sin**2
     _cos2 = _cos**2
-    
+
     c1 = np.sqrt(abs(sii * _cos2 + sjj * _sin2 - 2 * sij * _sin * _cos))
     c2 = np.sqrt(abs(sii * _sin2 + sjj * _cos2 + 2 * sij * _sin * _cos))
     return (c1, c2, angle)
@@ -125,9 +126,9 @@ projections_true = unravel(fitter.projections)
 ncols = min(args.nmeas, 7)
 nrows = int(np.ceil(args.nmeas / ncols))
 fig, axs = plt.subplots(
-    ncols=ncols, 
-    nrows=nrows, 
-    figsize=(1.1 * ncols, 1.1 * nrows), 
+    ncols=ncols,
+    nrows=nrows,
+    figsize=(1.1 * ncols, 1.1 * nrows),
     constrained_layout=True,
     sharex=True,
     sharey=True,
@@ -140,14 +141,14 @@ for proj_true, proj_pred, ax in zip(projections_true, projections_pred, axs.flat
     for i, proj in enumerate([proj_true, proj_pred]):
         color = ["white", "red"][i]
         ls = ["-", "-"][i]
-        
+
         cx, cy, angle = rms_ellipse_params(proj.cov())
         angle = -np.degrees(angle)
         center = (0.0, 0.0)
         cx *= 4.0
         cy *= 4.0
-        ax.add_patch(Ellipse(center, cx, cy, angle=angle, color=color, fill=False, ls=ls))
+        ax.add_patch(
+            Ellipse(center, cx, cy, angle=angle, color=color, fill=False, ls=ls)
+        )
 plt.savefig(os.path.join(output_dir, "fig_results.png"), dpi=300)
 plt.close()
-
-

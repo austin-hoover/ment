@@ -1,4 +1,5 @@
 """Test 2D MENT with high-resolution image."""
+
 import argparse
 import os
 import pathlib
@@ -30,10 +31,7 @@ plt.rcParams["ytick.minor.visible"] = True
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--im", 
-    type=str, 
-    default="tree", 
-    choices=["shepp", "leaf", "tree", "brain"]
+    "--im", type=str, default="tree", choices=["shepp", "leaf", "tree", "brain"]
 )
 parser.add_argument("--im-blur", type=float, default=0.0)
 parser.add_argument("--im-pad", type=int, default=0)
@@ -126,7 +124,7 @@ for j in range(sinogram.shape[1]):
 # import scipy.interpolate
 
 # interp = scipy.interpolate.RegularGridInterpolator(
-#     grid_coords, 
+#     grid_coords,
 #     grid_values_true,
 #     method="linear",
 #     fill_value=0.0,
@@ -148,7 +146,6 @@ for j in range(sinogram.shape[1]):
 #         thresh_type="frac",
 #     )
 #     projections.append([projection])
-
 
 
 # Plot sinogram
@@ -228,7 +225,7 @@ def evaluate_model(model: ment.MENT) -> dict:
 
     discrepancy = np.mean(np.abs(sinogram_pred - sinogram_true))
 
-    # Absolute entropy    
+    # Absolute entropy
     p = values_pred
     q = np.ones(p.shape)
     q = q / np.sum(q) / cell_volume
@@ -397,7 +394,7 @@ fig, axs = plt.subplots(ncols=4, nrows=2, figsize=(10, 5.0))
 for j, name in enumerate(results):
     for i, key in enumerate(["image", "sinogram"]):
         ax = axs[i, j]
-        image = results[name][key]        
+        image = results[name][key]
         ax.pcolormesh(image.T, vmin=vmin, vmax=vmax)
 for j, name in enumerate(results):
     axs[0, j].set_title(name.upper())

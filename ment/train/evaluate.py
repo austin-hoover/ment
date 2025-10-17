@@ -8,7 +8,7 @@ def evaluate_model(model: MENT, nsamp: int) -> dict:
     x = model.unnormalize(model.sample(nsamp))
     projections_pred = unravel(simulate(x, model.transforms, model.diagnostics))
     projections_meas = unravel(model.projections)
-    
+
     discrepancy_vector = []
     for projection_meas, projection_pred in zip(projections_meas, projections_pred):
         y_meas = projection_meas.values
@@ -20,7 +20,7 @@ def evaluate_model(model: MENT, nsamp: int) -> dict:
     discrepancy = np.sum(discrepancy_vector) / len(discrepancy_vector)
 
     cov_matrix = np.cov(x.T)
-    
+
     result = {}
     result["discrepancy"] = discrepancy
     result["cov_matrix"] = cov_matrix
@@ -33,4 +33,3 @@ class Evaluator:
 
     def __call__(self, model: MENT) -> dict:
         return evaluate_model(model, self.nsamp)
-

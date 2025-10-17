@@ -63,8 +63,12 @@ model.load(filename)
 nsamp = args.nsamp
 x_true = make_dist(nsamp)
 x_pred = model.unnormalize(model.sample(nsamp))
-projections_pred = ment.unravel(ment.simulate(x_pred, model.transforms, model.diagnostics))
-projections_true = ment.unravel(ment.simulate(x_true, model.transforms, model.diagnostics))
+projections_pred = ment.unravel(
+    ment.simulate(x_pred, model.transforms, model.diagnostics)
+)
+projections_true = ment.unravel(
+    ment.simulate(x_true, model.transforms, model.diagnostics)
+)
 
 
 # Plot distribution of actions Jx-Jy
@@ -75,9 +79,9 @@ cmap = args.cmap
 
 for log in [False, True]:
     fig, axs = plt.subplots(
-        nrows=2, 
-        ncols=ncols, 
-        figsize=(ncols * 2.0, 4.0), 
+        nrows=2,
+        ncols=ncols,
+        figsize=(ncols * 2.0, 4.0),
         constrained_layout=True,
         sharex=True,
         sharey=True,
@@ -100,11 +104,11 @@ for log in [False, True]:
         for i, values in enumerate(values_list):
             if args.blur:
                 values = gaussian_filter(values, args.blur)
-            #values = values / scale
+            # values = values / scale
             values = values / np.max(values)
             if log:
                 values = np.log10(values + 1.00e-15)
-                
+
             vmax = 1.0
             vmin = 0.0
             if log:
@@ -126,7 +130,6 @@ for log in [False, True]:
 
     axs[1, 0].set_xlabel("Jx")
     axs[1, 0].set_ylabel("Jy")
-
 
     filename = "fig_action"
     if log:
