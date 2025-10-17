@@ -66,6 +66,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dist", type=str, default="ring")
     parser.add_argument("--n", type=int, default=2000)
+    parser.add_argument("--chains", type=int, default=1)
     args = parser.parse_args()
 
     path = pathlib.Path(__file__)
@@ -76,19 +77,21 @@ if __name__ == "__main__":
 
     ndim = 2
     rng = np.random.default_rng()
-    nchains = 1
-    # theta_init = rng.normal(size=(nchains, ndim))
-    theta_init = rng.normal(size=ndim)
-    draws, accepts, depths = nurs.nurs_vec(
+    nchains = args.chains
+    ndraws = args.n // nchains
+    theta_init = rng.normal(size=(nchains, ndim))
+
+    draws, accepts, depths = nurs.nurs_vectorized(
         rng=rng,
         log_prob_func=log_prob_func,
         theta_init=theta_init,
-        num_draws=args.n,
+        num_draws=ndraws,
         step_size=0.2,
         max_doublings=10,
         threshold=1e-5,
         num_chains=nchains,
     )
+    draws = np.vstack(draws)
 
     fig, axs = plot_samples(log_prob_func, draws)
     plt.savefig(os.path.join(output_dir, "fig_samp.png"))
