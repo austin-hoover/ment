@@ -1,4 +1,4 @@
-"""Test NURS sampler on 2D distribution."""
+"""Test vectorized NURS sampler on 2D distribution."""
 
 import argparse
 import os
@@ -14,14 +14,14 @@ import nurs
 plt.style.use("../style.mplstyle")
 
 
-def log_prob_func_ring(x: np.ndarray) -> float:
-    x1 = x[0]
-    x2 = x[1]
+def log_prob_func_ring(x: np.ndarray) -> np.ndarray:
+    x1 = x[:, 0]
+    x2 = x[:, 1]
     return np.sin(np.pi * x1) - 2.0 * (x1**2 + x2**2 - 2.0) ** 2
 
 
 def log_prob_func_normal(x: np.ndarray) -> float:
-    return -0.5 * np.sum(x**2)
+    return -0.5 * np.sum(x**2, axis=1)
 
 
 def get_log_prob_func(name: str) -> Callable:
@@ -46,9 +46,7 @@ def plot_samples(
         [c.ravel() for c in np.meshgrid(*grid_coords, indexing="ij")], axis=-1
     )
 
-    grid_values_true = np.zeros(grid_points.shape[0])
-    for i, x in enumerate(grid_points):
-        grid_values_true[i] = np.exp(log_prob_func(x))
+    grid_values_true = np.exp(log_prob_func(grid_points))
     grid_values_true = grid_values_true.reshape(grid_shape)
     grid_values_true /= np.sum(grid_values_true)
 
@@ -67,7 +65,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dist", type=str, default="ring")
-    parser.add_argument("--n", type=int, default=2000)
+    parser.add_argument("--n", type=int, default=10_000)
+    parser.add_argument("--chains", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 
@@ -79,16 +78,20 @@ if __name__ == "__main__":
 
     ndim = 2
     rng = np.random.default_rng(args.seed)
-    theta_init = np.zeros(ndim)
+    nchains = args.chains
+    ndraws = args.n // nchains
+    theta_init = rng.normal(size=(nchains, ndim))
+
     draws, accepts, depths = nurs.sample_nurs(
         rng=rng,
         log_prob_func=log_prob_func,
         theta_init=theta_init,
-        num_draws=args.n,
+        n_draws=ndraws,
         step_size=0.2,
         max_doublings=10,
         threshold=1e-5,
     )
+    draws = np.vstack(draws)
 
     fig, axs = plot_samples(log_prob_func, draws)
     plt.savefig(os.path.join(output_dir, "fig_samp.png"))
