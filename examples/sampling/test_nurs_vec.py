@@ -85,11 +85,11 @@ if __name__ == "__main__":
     ndraws = args.n // nchains
     theta_init = rng.normal(size=(nchains, ndim))
 
-    draws, accepts, depths = nurs.nurs_vectorized(
+    draws, accepts, depths = nurs.sample_nurs_vec(
         rng=rng,
         log_prob_func=log_prob_func,
         theta_init=theta_init,
-        num_draws=ndraws,
+        n_draws=ndraws,
         step_size=0.2,
         max_doublings=10,
         threshold=1e-5,

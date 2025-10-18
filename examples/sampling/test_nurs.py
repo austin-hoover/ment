@@ -80,7 +80,7 @@ if __name__ == "__main__":
     ndim = 2
     rng = np.random.default_rng(args.seed)
     theta_init = np.zeros(ndim)
-    draws, accepts, depths = nurs.nurs(
+    draws, accepts, depths = nurs.sample_nurs(
         rng=rng,
         log_prob_func=log_prob_func,
         theta_init=theta_init,
