@@ -1,28 +1,21 @@
-import os
-import time
-import typing
-from pprint import pprint
-from typing import Any
 from typing import Callable
-from typing import Optional
 from typing import TypeAlias
 from typing import Union
 
 import numpy as np
+import torch
 import psdist as ps
 import psdist.plot as psv
 import ultraplot as plt
 
 from ..core import MENT
+from ..diag import Histogram
 from ..diag import Histogram1D
 from ..diag import HistogramND
 from ..sim import simulate
 from ..sim import simulate_with_diag_update
 from ..sim import copy_histograms
 from ..utils import unravel
-
-
-Histogram: TypeAlias = Union[Histogram1D, HistogramND]  # python<3.12 compatible
 
 
 class Plotter:
@@ -77,6 +70,11 @@ class Plotter:
 
         projections_true = unravel(projections_true)
         projections_pred = unravel(projections_pred)
+
+        x_pred = x_pred.cpu().numpy()
+        for i in range(len(projections_true)):
+            projections_true[i] = projections_true[i].cpu().numpy()
+            projections_pred[i] = projections_pred[i].cpu().numpy()
 
         # Make plots
         figs = []

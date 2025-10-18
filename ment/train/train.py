@@ -1,20 +1,17 @@
-import copy
 import os
 import time
-import typing
-from typing import Any
+
 from typing import Callable
-from typing import Optional
 from pprint import pprint
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from tqdm.notebook import tqdm as tqdm_nb
 from tqdm import tqdm
 
 from ..core import MENT
 from ..utils import ListLogger
-from ..utils import unravel
 
 
 class Trainer:

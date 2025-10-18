@@ -1,17 +1,48 @@
 """Interface for PyORBIT simulations."""
 
-import time
-import numpy as np
+import torch
 
 from orbit.core import orbit_mpi
 from orbit.core.bunch import Bunch
 from orbit.lattice import AccLattice
 from orbit.lattice import AccNode
-from orbit.utils import speed_of_light
 
-from .bunch import set_bunch_coords
-from .bunch import get_bunch_coords
-from .bunch import reverse_bunch
+
+def get_bunch_coords(bunch: Bunch, axis: tuple[int, ...] = None) -> torch.Tensor:
+    if axis is None:
+        axis = tuple(range(6))
+
+    coords = torch.zeros((bunch.getSize(), 6))
+    for i in range(bunch.getSize()):
+        coords[i, 0] = bunch.x(i)
+        coords[i, 1] = bunch.xp(i)
+        coords[i, 2] = bunch.y(i)
+        coords[i, 3] = bunch.yp(i)
+        coords[i, 4] = bunch.z(i)
+        coords[i, 5] = bunch.dE(i)
+    return coords[:, axis]
+
+
+def set_bunch_coords(bunch: Bunch, coords: torch.Tensor, axis: tuple[int, ...] = None) -> Bunch:
+    if axis is None:
+        axis = list(range(6))
+
+    bunch.deleteAllParticles()
+    bunch.compress()
+    for i in range(coords.shape[0]):
+        part_coords = torch.zeros(6)
+        part_coords[axis] = coords[i]
+        bunch.addParticle(*part_coords)
+    return bunch
+
+
+def reverse_bunch(bunch: Bunch) -> Bunch:
+    size = bunch.getSize()
+    for i in range(size):
+        bunch.xp(i, -bunch.xp(i))
+        bunch.yp(i, -bunch.yp(i))
+        bunch.z(i, -bunch.z(i))
+    return bunch
 
 
 def track_bunch(
@@ -92,14 +123,12 @@ class ORBITTransform:
 
         return bunch
 
-    def __call__(self, X: np.ndarray) -> np.ndarray:
-        self.bunch = set_bunch_coords(self.bunch, X, axis=self.axis)
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        self.bunch = set_bunch_coords(self.bunch, x, axis=self.axis)
         bunch = self.track_bunch()
-        X_out = get_bunch_coords(bunch, axis=self.axis)
-        return X_out
+        return get_bunch_coords(bunch, axis=self.axis)
 
-    def inverse(self, X: np.ndarray) -> np.ndarray:
-        self.bunch = set_bunch_coords(self.bunch, X, axis=self.axis)
+    def inverse(self, x: torch.Tensor) -> torch.Tensor:
+        self.bunch = set_bunch_coords(self.bunch, x, axis=self.axis)
         bunch = self.track_bunch_reverse()
-        X_out = get_bunch_coords(bunch, axis=self.axis)
-        return X_out
+        return get_bunch_coords(bunch, axis=self.axis)
