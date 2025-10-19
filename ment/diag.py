@@ -41,6 +41,7 @@ class HistogramND(Histogram):
         self.bin_sizes = [
             self.coords[i][1] - self.coords[i][0] for i in range(self.ndim)
         ]
+        self.bin_sizes = torch.stack(self.bin_sizes)
         self.bin_volume = torch.prod(self.bin_sizes)
         self.grid_shape = tuple([len(c) for c in self.coords])
 
@@ -54,7 +55,7 @@ class HistogramND(Histogram):
         return copy.deepcopy(self)
 
     def normalize(self) -> None:
-        values = torch.clones(self.values)
+        values = torch.clone(self.values)
         values_sum = torch.sum(values)
         if values_sum > 0.0:
             values = values / values_sum / self.bin_volume
@@ -65,7 +66,7 @@ class HistogramND(Histogram):
 
         if self.blur:
             device = values.device
-            values = values.detach().cpu.numpy()
+            values = values.cpu().numpy()
             values = scipy.ndimage.gaussian_filter(values, self.blur)
             values = torch.from_numpy(values)
             values = values.to(device)
@@ -143,7 +144,7 @@ class Histogram1D(Histogram):
 
         if self.blur:
             device = values.device
-            values = values.detach().cpu().numpy()
+            values = values.cpu().numpy()
             values = scipy.ndimage.gaussian_filter(values, self.blur)
             values = torch.from_numpy(values)
             values = values.to(device)
