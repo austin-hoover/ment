@@ -37,11 +37,11 @@ class Sampler:
     def add_noise(self, x: torch.Tensor) -> torch.Tensor:
         x_add = torch.zeros(x.shape, device=self.device)
         if self.noise_type == "uniform":
-            x_add = random_uniform(-0.5, 0.5, device=device, rng=self.rng)
-            x_add = x_add * self.noise_scale
+            x_add = random_uniform(-0.5, 0.5, device=self.device, rng=self.rng)
+            x_add = x_add * self.noise
         elif self.noise_type == "gaussian":
             x_add = torch.randn(x.shape)
-            x_add = x_add * self.noise_scale
+            x_add = x_add * self.noise
         return x + x_add
 
     def _sample(self, prob_func: Callable, size: int) -> torch.Tensor:
