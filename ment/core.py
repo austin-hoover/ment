@@ -1,5 +1,5 @@
+import pickle
 from typing import Callable
-from typing import Union
 from typing import Any
 
 import itertools
@@ -12,6 +12,7 @@ from .sim import IdentityTransform
 from .sim import LinearTransform
 from .utils import get_grid_points
 from .utils import wrap_tqdm
+from .utils import unravel
 
 
 class RegularGridInterpolator:
@@ -159,7 +160,8 @@ class MENT:
             Number of phase space dimensions.
         transforms:
             Functions that transform the phase space coordinates. Call signature is
-             `transform(x: torch.Tensor) -> torch.Tensor`.
+             `transform(x: torch.Tensor) -> torch.Tensor`, where `x` is a batch
+             of shape (nsamp, ndim).
         projections:
             Measured projections.
         unnorm_matrix:
@@ -215,7 +217,7 @@ class MENT:
             self.prior = InfiniteUniformPrior(ndim=ndim)
 
         self.unnorm_matrix = unnorm_matrix
-        self.unnorm_transform = self.set_unnorm_transform(unnorm_matrix)
+        self.set_unnorm_matrix(unnorm_matrix)
 
         self.lagrange_functions = self.init_lagrange_functions()
 
@@ -229,18 +231,21 @@ class MENT:
 
         self.iteration = 0
 
-    def set_unnorm_transform(self, unnorm_matrix: torch.Tensor) -> None:
-        """Set inverse of normalization matrix.
+    def set_unnorm_matrix(self, unnorm_matrix: torch.Tensor) -> None:
+        """Set normalization matrix.
 
-        The unnormalization matrix transforms normalized coordinates z to
-        phase space coordinates x via the linear mapping: x = Vz.
+        The inverse of the normalization matrix transforms the normalized
+        coordiantes z to phase space coordinates x via the linear mapping
+        x = Vz.
+
+        The densities are related as p(x) = p(z) / det(V).
         """
         self.unnorm_matrix = unnorm_matrix
         if self.unnorm_matrix is None:
-            self.unnorm_transform = IdentityTransform()
             self.unnorm_matrix = torch.eye(self.ndim)
-        else:
-            self.unnorm_transform = LinearTransform(self.unnorm_matrix)
+        self.unnorm_matrix_det = torch.linalg.det(self.unnorm_matrix)
+        self.norm_matrix = torch.linalg.inv(self.unnorm_matrix)
+        self.norm_matrix_det = torch.linalg.det(self.norm_matrix)
 
     def set_projections(
         self, projections: list[list[Histogram]]
@@ -276,19 +281,18 @@ class MENT:
 
     def unnormalize(self, z: torch.Tensor) -> torch.Tensor:
         """Unnormalize coordinates z: x = Vz."""
-        if self.unnorm_transform is None:
-            self.unnorm_transform = IdentityTransform()
-        return self.unnorm_transform(z)
+        return torch.matmul(z, self.unnorm_matrix.T)
 
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize coordinates x: z = V^-1 z."""
-        return self.unnorm_transform.inverse(x)
+        return torch.matmul(x, self.norm_matrix.T)
 
     def prob(self, z: torch.Tensor, squeeze: bool = True) -> torch.Tensor:
-        """Compute probability density at points x = Vz.
+        """Compute probability density at normalized coordinate z = V^-1 x.
 
-        The points z are defined in normalized phase space (equal to
-        regular phase space if V = I.
+        The points z are defined in normalized phase space (equal to regular
+        phase space if V = I. This function returns the density up to a
+        constant.
         """
         if z.ndim == 1:
             z = z[None, :]
@@ -308,7 +312,9 @@ class MENT:
         return prob
 
     def sample(self, size: int, **kws) -> torch.Tensor:
-        """Sample `size` particles from the distribution.
+        """Sample `size` particles from the distribution in normalized space.
+
+        To get the phase space coordinates, call `unnormalize(sample(size))`.
 
         Key word arguments go to `self.sampler`.
         """
@@ -319,12 +325,12 @@ class MENT:
         z = self.sampler(prob_func, size, **kws)
         return z
 
-    def get_projection_points(self, index: int, diag_index: int) -> torch.Tensor:
+    def _get_projection_points(self, index: int, diag_index: int) -> torch.Tensor:
         """Return points on projection axis for specified diagnostic."""
         diagnostic = self.diagnostics[index][diag_index]
         return diagnostic.get_grid_points()
 
-    def get_integration_points(
+    def _get_integration_points(
         self, index: int, diag_index: int, method: str = "grid"
     ) -> torch.Tensor:
         """Return integration points for specific diagnnostic."""
@@ -417,8 +423,8 @@ class MENT:
 
             if self.integration_loop:
                 # Get points on integration and projection grids.
-                projection_points = self.get_projection_points(index, diag_index)
-                integration_points = self.get_integration_points(index, diag_index)
+                projection_points = self._get_projection_points(index, diag_index)
+                integration_points = self._get_integration_points(index, diag_index)
 
                 # Initialize array of integration points (u).
                 u = torch.zeros((integration_points.shape[0], self.ndim))
@@ -559,3 +565,49 @@ class MENT:
                 self.lagrange_functions[index][diag_index] = lagrange_function
 
         self.iteration += 1
+
+    def parameters(self) -> torch.Tensor:
+        """Return vector of Lagrange multipliers."""
+        parameters = [
+            lfunc.values.ravel() for lfunc in unravel(self.lagrange_functions)
+        ]
+        parameters = torch.hstack(parameters)
+        return parameters
+
+    def save(self, path: str) -> None:
+        """Save model to pickled file."""
+        state = {
+            "transforms": self.transforms,
+            "diagnostics": self.diagnostics,
+            "projections": self.projections,
+            "ndim": self.ndim,
+            "prior": self.prior,
+            "sampler": self.sampler,
+            "unnorm_matrix": self.unnorm_matrix,
+            "iteration": self.iteration,
+        }
+
+        # Can we just do `pickle.dump(self, file)`?
+        file = open(path, "wb")
+        pickle.dump(state, file, pickle.HIGHEST_PROTOCOL)
+        file.close()
+
+    def load(self, path: str) -> None:
+        """Load model from pickled file."""
+        file = open(path, "rb")
+
+        state = pickle.load(file)
+
+        self.transforms = state["transforms"]
+        self.diagnostics = state["diagnostics"]
+        self.projections = state["projections"]
+
+        self.ndim = state["ndim"]
+        self.prior = state["prior"]
+        self.sampler = state["sampler"]
+        self.unnorm_matrix = state["unnorm_matrix"]
+        self.unnorm_transform = self.set_unnorm_transform(self.unnorm_matrix)
+
+        self.iteration = state["iteration"]
+        self.lagrange_functions = self.init_lagrange_functions()
+        file.close()
