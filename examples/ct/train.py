@@ -150,6 +150,7 @@ model = ment.MENT(
     integration_loop=False,
     mode="integrate",
     verbose=args.verbose,
+    diag_kws=dict(thresh=0.001, thresh_type="frac"),
 )
 
 
@@ -225,7 +226,7 @@ for iteration in range(args.iters):
 
     # Update model
     if iteration > 0:
-        model.gauss_seidel_step(learning_rate=args.lr, thresh=0.001, thresh_type="frac")
+        model.gauss_seidel_step(learning_rate=args.lr)
 
     # Evaluate model
     results = evaluate_model(model)
