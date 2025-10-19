@@ -99,14 +99,14 @@ class HistogramND(Histogram):
         return self.bin(x)
 
     def cov(self) -> torch.Tensor:
-        S = np.zeros((self.ndim, self.ndim))
+        S = torch.zeros((self.ndim, self.ndim))
 
         values_sum = torch.sum(self.values)
         if values_sum <= 0.0:
             return S
 
-        COORDS = np.meshgrid(*self.coords, indexing="ij")
-        coords_mean = np.array(
+        COORDS = torch.meshgrid(*self.coords, indexing="ij")
+        coords_mean = torch.stack(
             [weighted_average(C, weights=self.values) for C in COORDS]
         )
         for i in range(self.ndim):
@@ -115,7 +115,7 @@ class HistogramND(Histogram):
                 Y = COORDS[j] - coords_mean[j]
                 EX = torch.sum(self.values * X) / values_sum
                 EY = torch.sum(self.values * Y) / values_sum
-                EXY = np.sum(self.values * X * Y) / values_sum
+                EXY = torch.sum(self.values * X * Y) / values_sum
                 S[i, j] = S[j, i] = EXY - EX * EY
         return S
 

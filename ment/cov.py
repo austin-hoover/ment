@@ -111,14 +111,17 @@ def calc_rms_ellipse_params(cov_matrix: torch.Tensor) -> tuple[float, ...]:
         c2: Ellipse semi-axis #2.
         angle: Tilt angle below horizontal axis [rad].
     """
-    sii = S[0, 0]
-    sjj = S[1, 1]
-    sij = S[0, 1]
+    sii = cov_matrix[0, 0]
+    sjj = cov_matrix[1, 1]
+    sij = cov_matrix[0, 1]
+
     angle = -0.5 * torch.arctan2(2.0 * sij, sii - sjj)
+
     _sin = torch.sin(angle)
     _cos = torch.cos(angle)
     _sin2 = _sin**2
     _cos2 = _cos**2
+
     c1 = torch.sqrt(abs(sii * _cos2 + sjj * _sin2 - 2 * sij * _sin * _cos))
     c2 = torch.sqrt(abs(sii * _sin2 + sjj * _cos2 + 2 * sij * _sin * _cos))
     return (c1, c2, angle)

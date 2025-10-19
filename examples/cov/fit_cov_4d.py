@@ -1,21 +1,16 @@
 """Fit 4D covariance matrix to 2D measurements."""
 
 import argparse
+import math
 import os
 import pathlib
-from typing import Callable
-from typing import Optional
 
 import numpy as np
+import torch
 from matplotlib import pyplot as plt
 from matplotlib.patches import Ellipse
 
 import ment
-from ment.diag import HistogramND
-from ment.diag import Histogram1D
-from ment.sim import simulate
-from ment.utils import unravel
-from ment.utils import rotation_matrix
 
 
 # Arguments
@@ -47,38 +42,40 @@ os.makedirs(output_dir, exist_ok=True)
 ndim = 4
 dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=args.seed)
 x_true = dist.sample(1_000_000)
-print(np.cov(x_true.T))
+
+cov_matrix = torch.cov(x_true.T)
+print(cov_matrix)
 
 
 # Forward model
 # --------------------------------------------------------------------------------------
 
-rng = np.random.default_rng(args.seed)
-phase_advances = rng.uniform(0.0, np.pi, size=(args.nmeas, 2))
+phase_advances = ment.utils.random_uniform(0.0, np.pi, size=(args.nmeas, 2))
+
 transfer_matrices = []
 for mux, muy in phase_advances:
-    matrix = np.eye(ndim)
-    matrix[0:2, 0:2] = ment.sim.rotation_matrix(mux)
-    matrix[2:4, 2:4] = ment.sim.rotation_matrix(muy)
+    matrix = torch.eye(ndim)
+    matrix[0:2, 0:2] = ment.utils.rotation_matrix(mux)
+    matrix[2:4, 2:4] = ment.utils.rotation_matrix(muy)
     transfer_matrices.append(matrix)
 
 transforms = []
 for matrix in transfer_matrices:
-    transform = ment.sim.LinearTransform(matrix)
+    transform = ment.LinearTransform(matrix)
     transforms.append(transform)
 
-bin_edges = 2 * [np.linspace(-args.xmax, args.xmax, args.bins + 1)]
+bin_edges = 2 * [torch.linspace(-args.xmax, args.xmax, args.bins + 1)]
 
 diagnostics = []
 for transform in transforms:
-    diagnostic = ment.diag.HistogramND(axis=(0, 2), edges=bin_edges)
+    diagnostic = ment.HistogramND(axis=(0, 2), edges=bin_edges)
     diagnostics.append([diagnostic])
 
 
 # Data
 # --------------------------------------------------------------------------------------
 
-projections = simulate(x_true, transforms, diagnostics)
+projections = ment.simulate(x_true, transforms, diagnostics)
 
 
 # Fit covariance matrix
@@ -102,26 +99,9 @@ print(fitter.build_cov())
 
 
 # Plot results
-def rms_ellipse_params(cov_matrix: np.ndarray) -> tuple[float, float, float]:
-    sii = cov_matrix[0, 0]
-    sjj = cov_matrix[1, 1]
-    sij = cov_matrix[0, 1]
-
-    angle = -0.5 * np.arctan2(2 * sij, sii - sjj)
-
-    _sin = np.sin(angle)
-    _cos = np.cos(angle)
-    _sin2 = _sin**2
-    _cos2 = _cos**2
-
-    c1 = np.sqrt(abs(sii * _cos2 + sjj * _sin2 - 2 * sij * _sin * _cos))
-    c2 = np.sqrt(abs(sii * _sin2 + sjj * _cos2 + 2 * sij * _sin * _cos))
-    return (c1, c2, angle)
-
-
 x = fitter.sample(100_000)
-projections_pred = unravel(simulate(x, fitter.transforms, fitter.diagnostics))
-projections_true = unravel(fitter.projections)
+projections_pred = ment.unravel(ment.simulate(x, fitter.transforms, fitter.diagnostics))
+projections_true = ment.unravel(fitter.projections)
 
 ncols = min(args.nmeas, 7)
 nrows = int(np.ceil(args.nmeas / ncols))
@@ -142,8 +122,8 @@ for proj_true, proj_pred, ax in zip(projections_true, projections_pred, axs.flat
         color = ["white", "red"][i]
         ls = ["-", "-"][i]
 
-        cx, cy, angle = rms_ellipse_params(proj.cov())
-        angle = -np.degrees(angle)
+        cx, cy, angle = ment.cov.calc_rms_ellipse_params(proj.cov())
+        angle = -math.degrees(angle)
         center = (0.0, 0.0)
         cx *= 4.0
         cy *= 4.0

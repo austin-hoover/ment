@@ -3,19 +3,14 @@
 import argparse
 import os
 import pathlib
-from typing import Callable
-from typing import Optional
 
+import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import pyplot as plt
-from matplotlib.patches import Ellipse
+import torch
 
 import ment
-from ment.diag import HistogramND
-from ment.diag import Histogram1D
-from ment.sim import simulate
-from ment.utils import unravel
-from ment.utils import rotation_matrix
+
+plt.style.use("../style.mplstyle")
 
 
 # Arguments
@@ -51,10 +46,8 @@ ndim = args.ndim
 dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=args.seed)
 x_true = dist.sample(1_000_000)
 
-cov_true = np.cov(x_true.T)
+cov_true = torch.cov(x_true.T)
 print(cov_true)
-
-rng = np.random.default_rng(args.seed)
 
 
 # Forward model
@@ -62,33 +55,33 @@ rng = np.random.default_rng(args.seed)
 
 
 class ProjectionTransform:
-    def __init__(self, direction: np.ndarray) -> None:
+    def __init__(self, direction: torch.Tensor) -> None:
         self.direction = direction
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
-        return np.sum(x * self.direction, axis=1)[:, None]
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.sum(x * self.direction, axis=1)[:, None]
 
+
+directions = torch.randn(args.nmeas, args.ndim)
+directions = directions / torch.linalg.norm(directions, axis=1)[:, None]
 
 transforms = []
-directions = rng.normal(size=(args.nmeas, args.ndim))
 for direction in directions:
-    direction = np.random.normal(size=ndim)
-    direction = direction / np.linalg.norm(direction)
     transform = ProjectionTransform(direction)
     transforms.append(transform)
 
-bin_edges = np.linspace(-args.xmax, args.xmax, args.bins + 1)
+bin_edges = torch.linspace(-args.xmax, args.xmax, args.bins + 1)
 
 diagnostics = []
 for transform in transforms:
-    diagnostic = ment.diag.Histogram1D(edges=bin_edges, axis=0)
+    diagnostic = ment.Histogram1D(edges=bin_edges, axis=0)
     diagnostics.append([diagnostic])
 
 
 # Data
 # --------------------------------------------------------------------------------------
 
-projections = simulate(x_true, transforms, diagnostics)
+projections = ment.simulate(x_true, transforms, diagnostics)
 
 
 # Fit covariance matrix
@@ -113,8 +106,8 @@ print(fitter.build_cov())
 
 # Plot results
 x = fitter.sample(100_000)
-projections_pred = unravel(simulate(x, fitter.transforms, fitter.diagnostics))
-projections_meas = unravel(fitter.projections)
+projections_pred = ment.unravel(ment.simulate(x, fitter.transforms, fitter.diagnostics))
+projections_meas = ment.unravel(fitter.projections)
 
 ncols = min(args.nmeas, 10)
 nrows = int(np.ceil(args.nmeas / ncols))

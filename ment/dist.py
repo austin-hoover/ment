@@ -67,6 +67,7 @@ class Distribution:
         if self.transform is not None:
             x = self.transform(x)
         x = torch.from_numpy(x)
+        x = x.float()
         return x
 
     def _sample(self, n: int) -> np.ndarray:
