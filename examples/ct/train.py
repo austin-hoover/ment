@@ -114,9 +114,9 @@ sinogram = radon_transform(grid_values_true.numpy(), angles.numpy())
 projections = []
 for j in range(sinogram.shape[1]):
     projection = ment.Histogram1D(
+        axis=0,
         values=torch.from_numpy(sinogram[:, j]),
         coords=grid_coords[0],
-        axis=0,
     )
     projection.normalize()
     projections.append([projection])
@@ -354,8 +354,8 @@ plt.savefig(os.path.join(output_dir, "fig_compare_image.png"))
 plt.close()
 
 fig, axs = plt.subplots(ncols=4, figsize=(10, 2.5), sharex=True, sharey=True)
-for ax, key in zip(axs, results):
-    image = results[key]["sinogram"]
+for ax, name in zip(axs, results):
+    image = results[name]["sinogram"]
     ax.pcolormesh(image.T, vmin=vmin, vmax=vmax)
     ax.set_title(name.upper())
 plt.savefig(os.path.join(output_dir, "fig_compare_sinogram.png"))
