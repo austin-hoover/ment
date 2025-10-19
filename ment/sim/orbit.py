@@ -23,7 +23,9 @@ def get_bunch_coords(bunch: Bunch, axis: tuple[int, ...] = None) -> torch.Tensor
     return coords[:, axis]
 
 
-def set_bunch_coords(bunch: Bunch, coords: torch.Tensor, axis: tuple[int, ...] = None) -> Bunch:
+def set_bunch_coords(
+    bunch: Bunch, coords: torch.Tensor, axis: tuple[int, ...] = None
+) -> Bunch:
     if axis is None:
         axis = list(range(6))
 

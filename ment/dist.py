@@ -97,7 +97,6 @@ class Galaxy(Distribution):
             self.noise = 0.0
 
     def _sample(self, n):
-
         def _rotate(X, theta):
             x = X[:, 0].copy()
             y = X[:, 1].copy()

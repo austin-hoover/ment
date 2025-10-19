@@ -8,6 +8,7 @@ from ..utils import random_uniform
 
 class Sampler:
     """Base class for particle samplers."""
+
     def __init__(
         self,
         ndim: int,

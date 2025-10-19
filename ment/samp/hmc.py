@@ -71,7 +71,7 @@ def integrate_leapfrog(
     """
     x = torch.clone(x)
     p = torch.clone(p)
-    
+
     xs, ps = [], []
 
     p += 0.5 * step_size * compute_gradients(log_prob_func, x)
@@ -86,7 +86,9 @@ def integrate_leapfrog(
     return xs, ps
 
 
-def hamiltonian(x: torch.Tensor, p: torch.Tensor, log_prob_func: Callable) -> torch.Tensor:
+def hamiltonian(
+    x: torch.Tensor, p: torch.Tensor, log_prob_func: Callable
+) -> torch.Tensor:
     potential = -log_prob_func(x)
     kinetic = 0.5 * torch.sum(torch.square(p), axis=1)
     return potential + kinetic
@@ -187,6 +189,7 @@ def sample(
 
 class HamiltonianMonteCarloSampler(Sampler):
     """Hamiltonian Monte Carlo (HMC) sampler."""
+
     def __init__(
         self,
         chains: int = 1,
@@ -208,7 +211,6 @@ class HamiltonianMonteCarloSampler(Sampler):
         self.steps_per_samp = steps_per_samp
 
     def _sample(self, prob_func: Callable, size: int) -> torch.Tensor:
-        
         def log_prob_func(x: torch.Tensor) -> torch.Tensor:
             return torch.log(prob_func(x) + 1.00e-12)
 

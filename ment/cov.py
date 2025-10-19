@@ -59,7 +59,9 @@ def build_scale_matrix(emittances: torch.Tensor) -> torch.Tensor:
     return torch.diag(diagonal)
 
 
-def build_norm_matrix_from_cov(cov_matrix: torch.Tensor, scale: bool = False) -> torch.Tensor:
+def build_norm_matrix_from_cov(
+    cov_matrix: torch.Tensor, scale: bool = False
+) -> torch.Tensor:
     """Return 4 x 4 symplectic normalization matrix from covariance matrix."""
     S = cov_matrix
     U = build_poisson_matrix(cov_matrix.shape[0])

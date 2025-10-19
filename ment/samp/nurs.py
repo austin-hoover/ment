@@ -141,4 +141,3 @@ def sample_nurs(
     for m in tqdm.tqdm(range(1, n_draws), initial=1, total=n_draws):
         draws[m], accepts[m], depths[m] = transition(draws[m - 1])
     return draws, accepts, depths
-

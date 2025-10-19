@@ -14,6 +14,7 @@ class GridSampler(Sampler):
 
     Samples from discrete distribution on regular grid.
     """
+
     def __init__(
         self,
         limits: list[tuple[float]],

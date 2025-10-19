@@ -14,6 +14,7 @@ class MetropolisHastingsSampler(Sampler):
 
     https://colindcarroll.com/2019/08/18/very-parallel-mcmc-sampling/
     """
+
     def __init__(
         self,
         start: torch.Tensor,
@@ -45,7 +46,7 @@ class MetropolisHastingsSampler(Sampler):
 
         self.chains = self.start.shape[0]
         self.burnin = burnin
-        
+
         self.proposal_mean = torch.zeros(self.ndim, device=self.device)
         self.proposal_cov = proposal_cov
         if self.proposal_cov is None:

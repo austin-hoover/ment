@@ -9,6 +9,7 @@ from .core import Sampler
 
 class FlowSampler(Sampler):
     """Normalizing flow sampler."""
+
     def __init__(
         self,
         flow: zuko.flows.Flow,
