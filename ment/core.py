@@ -69,7 +69,7 @@ class RegularGridInterpolator:
         for indexer in itertools.product([0, 1], repeat=self.n):
             as_s = [idx[onoff] for onoff, idx in zip(indexer, idxs)]
             bs_s = [dist[1 - onoff] for onoff, dist in zip(indexer, dists)]
-            numerator += self.values[as_s] * torch.prod(torch.stack(bs_s), dim=0)
+            numerator += self.values[tuple(as_s)] * torch.prod(torch.stack(bs_s), dim=0)
         denominator = torch.prod(torch.stack(overalls), dim=0)
         result = numerator / denominator
 
