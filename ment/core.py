@@ -51,7 +51,7 @@ class RegularGridInterpolator:
         dists = []
         overalls = []
         for p, x in zip(self.coords, new_points):
-            idx_right = torch.bucketize(x, p)
+            idx_right = torch.bucketize(x.contiguous(), p)
             idx_right[idx_right >= p.shape[0]] = p.shape[0] - 1
             idx_left = (idx_right - 1).clamp(0, p.shape[0] - 1)
             dist_left = x - p[idx_left]
