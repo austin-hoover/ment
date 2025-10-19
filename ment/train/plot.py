@@ -362,7 +362,7 @@ class PlotProj1D:
         return (fig, axs)
 
 
-class PlotProj2D_Contour:
+class PlotProj2DContour:
     def __init__(
         self,
         ncols_max: int = 7,
@@ -382,11 +382,14 @@ class PlotProj2D_Contour:
         if self.plot_kws_true is None:
             self.plot_kws_true = {}
 
-        self.plot_kws_pred = plot_kws_true
+        self.plot_kws_pred = plot_kws_pred
         if self.plot_kws_pred is None:
             self.plot_kws_pred = {}
 
         self.plot_kws.setdefault("kind", "contour")
+        self.plot_kws.setdefault("proc_kws", {})
+        self.plot_kws["proc_kws"].setdefault("scale", "max")
+        self.plot_kws["proc_kws"].setdefault("blur", 0.0)
         self.plot_kws.setdefault("levels", np.linspace(0.01, 1.0, 7))
         self.plot_kws.setdefault("lw", 0.75)
 
@@ -409,16 +412,16 @@ class PlotProj2D_Contour:
         fig, axs = plt.subplots(
             ncols=ncols,
             nrows=nrows,
-            figsize=(1.1 * ncols, 1.1 * ncols),
+            figsize=(1.7 * ncols, 1.7 * nrows),
             sharex=self.lim_share,
-            sharey=self.limshare,
+            sharey=self.lim_share,
         )
         for index in range(nmeas):
-            ax = axs[index]
+            ax = axs.flat[index]
             proj_true = projections_true[index]
             proj_pred = projections_pred[index]
-            plot_image(proj_pred.values, proj_pred.edges, ax=ax, **self.plot_kws_pred)
             plot_image(proj_true.values, proj_true.edges, ax=ax, **self.plot_kws_true)
+            plot_image(proj_pred.values, proj_pred.edges, ax=ax, **self.plot_kws_pred)
 
         if self.lim_share:
             ax_ref = axs[0]
@@ -427,8 +430,8 @@ class PlotProj2D_Contour:
                 ax.set_ylim(np.multiply(ax_ref.get_ylim(), self.lim_scale))
         else:
             for ax in axs.flat:
-                ax.format(xlim=np.multiply(ax.get_xlim(), self.lim_scale))
-                ax.format(ylim=np.multiply(ax.get_ylim(), self.lim_scale))
+                ax.set_xlim(np.multiply(ax.get_xlim(), self.lim_scale))
+                ax.set_ylim(np.multiply(ax.get_ylim(), self.lim_scale))
 
         return (fig, axs)
 
