@@ -14,19 +14,49 @@ from ..sim import copy_histograms
 from ..utils import unravel
 
 
+def process_image(
+    values: np.ndarray,
+    blur: float = 0.0,
+    thresh: float = 0.0,
+    thresh_type: str = "abs",
+    scale: str = None,
+) -> np.ndarray:
+    """Process image values (thresh, blur, scale)."""
+    values = np.copy(np.array(values))
+
+    if blur:
+        values = scipy.ndimage.gaussian_filter(values, blur)
+
+    if thresh:
+        min_value = thresh
+        if thresh_type == "frac":
+            min_value = thresh * np.max(values)
+        values[values > min_value] = 0.0
+
+    if scale:
+        if scale == "max":
+            values = values / np.max(values)
+        else:
+            raise ValueError(f"Invalid scale {scale}")
+
+    return values
+
+
 def plot_image(
     values: np.ndarray,
     edges: list[np.ndarray],
     ax=None,
     kind: str = "pcolor",
-    blur: float = 0.0,
+    proc_kws: dict = None,
     **plot_kws,
 ) -> None:
-    values = np.copy(np.array(values))
-    if blur:
-        values = scipy.ndimage.gaussian_filter(values, blur)
+    """Plot two-dimensional image."""
+    if proc_kws is None:
+        proc_kws = {}
 
+    values = process_image(values, **proc_kws)
     coords = [0.5 * (e[:-1] + e[1:]) for e in edges]
+
     if kind == "pcolor":
         ax.pcolormesh(coords[0], coords[1], values.T, **plot_kws)
     elif kind == "contour":
@@ -38,9 +68,20 @@ def plot_image(
 
 
 def plot_image_1d(
-    values: np.ndarray, edges: list[np.ndarray], ax=None, kind: str = "line", **plot_kws
+    values: np.ndarray,
+    edges: list[np.ndarray],
+    ax=None,
+    kind: str = "line",
+    proc_kws: dict = None,
+    **plot_kws,
 ) -> None:
+    """Plot one-dimensional image."""
+    if proc_kws is None:
+        proc_kws = {}
+
+    values = process_image(values, **proc_kws)
     coords = 0.5 * (edges[:-1] + edges[1:])
+
     if kind == "stairs":
         plot_kws.pop("marker", None)
         plot_kws.pop("ms", None)
@@ -104,8 +145,10 @@ class CornerGrid:
         diag_kws: dict = None,
         **plot_kws,
     ) -> None:
+
         if diag_kws is None:
             diag_kws = {}
+
         diag_kws.setdefault("color", "black")
         diag_kws.setdefault("lw", 1.25)
         diag_kws.setdefault("kind", "stairs")
