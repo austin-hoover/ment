@@ -1,13 +1,7 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# # N:1 MENT — random projections
-
-# In[ ]:
-
-
+"""ND reconstruction from random 1D projections."""
+import argparse
 import os
-import sys
+import pathlib
 import time
 
 import matplotlib.pyplot as plt
@@ -18,54 +12,60 @@ import ment
 from ment.train.plot import Plotter
 from ment.train.plot import PlotDistCorner
 from ment.train.plot import PlotProj1D
-from ment.utils import unravel
 
-plt.style.use("../style.mplstyle")
-
-
-# ## Settings
-
-# In[ ]:
+plt.style.use("./style.mplstyle")
 
 
-dist_name = "gaussian-mixture"
-ndim = 6
-xmax = 3.5
-seed = 12345
+# Parse arguments
+# --------------------------------------------------------------------------------------
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--dist",
+    type=str,
+    default="gaussian-mixture",
+    choices=["gaussian-mixture", "rings", "gaussian", "waterbag", "kv"],
+)
+parser.add_argument("--ndim", type=int, default=6)
+parser.add_argument("--nmeas", type=int, default=10)
+parser.add_argument("--nbins", type=int, default=64)
+parser.add_argument("--xmax", type=float, default=3.5)
+parser.add_argument(
+    "--mode", type=str, default="reverse", choices=["reverse", "forward"]
+)
+parser.add_argument("--samp-method", type=str, default="mh")
+parser.add_argument("--iters", type=int, default=3)
+parser.add_argument("--lr", type=float, default=0.75)
+parser.add_argument("--seed", type=int, default=123)
+parser.add_argument("--show", action="store_true")
+args = parser.parse_args()
 
 
-# ## Source distribution
+# Setup
+# --------------------------------------------------------------------------------------
 
-# In[ ]:
+path = pathlib.Path(__file__)
+timestamp = time.strftime("%y%m%d_%H%M%S")
+output_dir = os.path.join("outputs", path.stem, timestamp)
+os.makedirs(output_dir, exist_ok=True)
 
 
-dist = ment.dist.get_dist(dist_name, ndim=ndim, seed=seed)
+# Source distribution
+# --------------------------------------------------------------------------------------
+
+ndim = args.ndim
+xmax = args.xmax
+seed = args.seed
+
+dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=seed)
 x_true = dist.sample(1_000_000)
+x_true = x_true.float()
+
+limits = args.ndim * [(-xmax, xmax)]
 
 
-# In[ ]:
-
-
-limits = ndim * [(-xmax, xmax)]
-
-grid = ment.train.plot.CornerGrid(ndim, figsize=(ndim * 1.4, ndim * 1.4))
-grid.plot(x_true, limits=limits, bins=64)
-plt.show()
-
-
-# ## Data generation
-
-# In[ ]:
-
-
-nmeas = 10
-nbins = 64
-blur = 0.0
-
-
-# Create phase space transformations.
-
-# In[ ]:
+# Data generation
+# --------------------------------------------------------------------------------------
 
 
 class ProjectionTransform:
@@ -76,24 +76,17 @@ class ProjectionTransform:
         return torch.sum(x * self.direction, axis=1)[:, None]
 
 
-# In[ ]:
-
-
 transforms = []
-for _ in range(nmeas):
+for _ in range(args.nmeas):
     direction = torch.randn(ndim)
     direction = direction / torch.linalg.norm(direction)
     transform = ProjectionTransform(direction)
     transforms.append(transform)
 
 
-# Create histogram diagnostics.
-
-# In[ ]:
-
-
+# Create histogram diagnostic
 axis_proj = axis_meas = 0
-bin_edges = torch.linspace(-xmax, xmax, nbins + 1)
+bin_edges = torch.linspace(-xmax, xmax, args.nbins + 1)
 
 diagnostics = []
 for transform in transforms:
@@ -105,10 +98,6 @@ for transform in transforms:
 
 
 # Generate data from the source distribution.
-
-# In[ ]:
-
-
 projections = ment.simulate_with_diag_update(
     x_true,
     transforms,
@@ -117,18 +106,12 @@ projections = ment.simulate_with_diag_update(
 )
 
 
-# ## Reconstruction model
-
-# In[ ]:
-
+# Reconstruction model
+# --------------------------------------------------------------------------------------
 
 prior = ment.GaussianPrior(ndim=ndim, scale=1.0)
 
-
-# In[ ]:
-
-
-samp_method = "mcmc"
+samp_method = args.samp_method
 
 if samp_method == "grid":
     samp_grid_res = 32
@@ -142,7 +125,7 @@ if samp_method == "grid":
         noise=samp_noise,
     )
 
-elif samp_method == "mcmc":
+elif samp_method == "mh":
     samp_burnin = 500
     samp_chains = 1000
     samp_prop_cov = torch.eye(ndim) * (0.5**2)
@@ -163,9 +146,6 @@ else:
     raise ValueError
 
 
-# In[ ]:
-
-
 model = ment.MENT(
     ndim=ndim,
     transforms=transforms,
@@ -178,16 +158,10 @@ model = ment.MENT(
 )
 
 
-# ## Training
-
-# In[ ]:
-
+# Training
+# --------------------------------------------------------------------------------------
 
 plot_nsamp = x_true.shape[0]
-
-
-# In[ ]:
-
 
 plot_model = Plotter(
     n_samples=plot_nsamp,
@@ -205,30 +179,20 @@ plot_model = Plotter(
 
 eval_model = ment.train.Evaluator(nsamp=plot_nsamp)
 
-
-# In[ ]:
-
-
 trainer = ment.train.Trainer(
     model,
     plot_func=plot_model,
     eval_func=eval_model,
-    notebook=True,
+    output_dir=output_dir,
 )
 
 trainer.train(iters=3, lr=0.95)
 
 
-# ## Evaluate
-
-# In[ ]:
-
+# Evaluate
+# --------------------------------------------------------------------------------------
 
 x_pred = model.unnormalize(model.sample(1_000_000))
-
-
-# In[ ]:
-
 
 grid = ment.train.plot.CornerGrid(ndim, figsize=(ndim * 1.4, ndim * 1.4))
 for i, x in enumerate([x_true, x_pred]):
@@ -243,7 +207,5 @@ for i, x in enumerate([x_true, x_pred]):
         diag_kws=dict(color=color, kind="line"),
         levels=np.linspace(0.01, 1.0, 7),
     )
-plt.show()
-
-
-# In[ ]:
+plt.savefig(os.path.join(output_dir, "fig_corner_final"))
+plt.close("all")
