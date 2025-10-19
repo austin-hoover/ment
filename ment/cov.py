@@ -219,10 +219,10 @@ class CovFitterBase:
 
     def fit(
         self, method: str = "differential_evolution", iters: int = 500, **opt_kws
-    ) -> tuple[torch.Tensor, OptimizeResult]:
+    ) -> tuple[np.ndarray, OptimizeResult]:
         """Fit parameters to data."""
 
-        def callback(intermediate_result):
+        def callback_base():
             self.iteration += 1
             if self.verbose > 0:
                 print(
@@ -232,16 +232,97 @@ class CovFitterBase:
                 print(f"cov_matrix:")
                 print(self.build_cov())
 
-        opt_kws.setdefault("popsize", 5)
-        opt_kws.setdefault("disp", True)
-        opt_kws.setdefault("maxiter", iters)
+        result = None
 
-        result = scipy.optimize.differential_evolution(
-            self.loss_function,
-            scipy.optimize.Bounds(self.lb, self.ub),
-            callback=callback,
-            **opt_kws,
-        )
+        if method == "simplex":
+            opt_kws.setdefault("options", {})
+            opt_kws["options"].setdefault("disp", True)
+            opt_kws["options"].setdefault("maxiter", iters)
+
+            result = scipy.optimize.minimize(
+                self.loss_function,
+                self.params,
+                method="nelder-mead",
+                bounds=scipy.optimize.Bounds(self.lb, self.ub),
+                **opt_kws,
+            )
+
+        elif method == "powell":
+            opt_kws.setdefault("options", {})
+            opt_kws["options"].setdefault("disp", True)
+            opt_kws["options"].setdefault("maxiter", iters)
+
+            result = scipy.optimize.minimize(
+                self.loss_function,
+                self.params,
+                method="powell",
+                bounds=scipy.optimize.Bounds(self.lb, self.ub),
+                **opt_kws,
+            )
+
+        elif method == "l-bfgs-b":
+            opt_kws.setdefault("options", {})
+            opt_kws["options"].setdefault("disp", True)
+            opt_kws["options"].setdefault("maxiter", iters)
+
+            result = scipy.optimize.minimize(
+                self.loss_function,
+                self.params,
+                method="l-bfgs-b",
+                bounds=scipy.optimize.Bounds(self.lb, self.ub),
+                **opt_kws,
+            )
+
+        elif method == "least_squares":
+            opt_kws.setdefault("verbose", 2)
+            opt_kws.setdefault("xtol", 1.00e-15)
+            opt_kws.setdefault("ftol", 1.00e-15)
+            opt_kws.setdefault("gtol", 1.00e-15)
+            opt_kws.setdefault("max_nfev", iters)
+
+            result = scipy.optimize.least_squares(
+                self.loss_function,
+                self.params,
+                # bounds=(self.lb, self.ub),
+                **opt_kws,
+            )
+
+        elif method == "differential_evolution":
+            opt_kws.setdefault("popsize", 5)
+            opt_kws.setdefault("disp", True)
+            opt_kws.setdefault("maxiter", iters)
+
+            result = scipy.optimize.differential_evolution(
+                self.loss_function,
+                scipy.optimize.Bounds(self.lb, self.ub),
+                callback=(lambda intermediate_result: callback_base()),
+                **opt_kws,
+            )
+        elif method == "dual_annealing":
+            result = scipy.optimize.dual_annealing(
+                self.loss_function,
+                scipy.optimize.Bounds(self.lb, self.ub),
+                callback=(lambda x, f, context: callback_base()),
+                **opt_kws,
+            )
+        elif method == "shgo":
+            result = scipy.optimize.shgo(
+                self.loss_function,
+                scipy.optimize.Bounds(self.lb, self.ub),
+                callback=(lambda x: callback_base()),
+                **opt_kws,
+            )
+        elif method == "direct":
+            opt_kws.setdefault("vol_tol", 1.00e-100)
+            opt_kws.setdefault("len_tol", 1.00e-18)
+            result = scipy.optimize.direct(
+                self.loss_function,
+                scipy.optimize.Bounds(self.lb, self.ub),
+                callback=(lambda x: callback_base()),
+                **opt_kws,
+            )
+        else:
+            raise ValueError
 
         cov_matrix = self.build_cov()
         return cov_matrix, result
