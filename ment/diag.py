@@ -9,8 +9,12 @@ from .utils import get_grid_points
 
 
 class Histogram:
-    def __init__(self, blur: float = 0.0) -> None:
+    def __init__(
+        self, blur: float = 0.0, thresh: float = 0.0, thresh_type: str = "abs"
+    ) -> None:
         self.blur = blur
+        self.thresh = thresh
+        self.thresh_type = thresh_type
 
 
 class HistogramND(Histogram):
@@ -34,26 +38,46 @@ class HistogramND(Histogram):
         if self.edges is None and self.coords is not None:
             self.edges = [coords_to_edges(c) for c in self.coords]
 
-        self.shape = tuple([len(c) for c in self.coords])
-        self.values = values
-        if self.values is None:
-            self.values = torch.zeros(self.shape)
-
         self.bin_sizes = [
             self.coords[i][1] - self.coords[i][0] for i in range(self.ndim)
         ]
         self.bin_volume = torch.prod(self.bin_sizes)
         self.grid_shape = tuple([len(c) for c in self.coords])
 
+        self.shape = tuple([len(c) for c in self.coords])
+        self.values = values
+        if self.values is None:
+            self.values = torch.zeros(self.shape)
+        self.normalize()
+
     def copy(self) -> Self:
         return copy.deepcopy(self)
 
     def normalize(self) -> None:
-        values = torch.clone(self.values)
+        values = torch.clones(self.values)
         values_sum = torch.sum(values)
         if values_sum > 0.0:
             values = values / values_sum / self.bin_volume
         self.values = values
+
+    def process(self) -> None:
+        values = torch.clone(self.values)
+
+        if self.blur:
+            device = values.device
+            values = values.detach().cpu.numpy()
+            values = scipy.ndimage.gaussian_filter(values, self.blur)
+            values = torch.from_numpy(values)
+            values = values.to(device)
+
+        if self.thresh > 0:
+            min_value = self.thresh
+            if self.thresh_type == "frac":
+                min_value = torch.max(values) * self.thresh
+            values[values < min_value] = 0.0
+
+        self.values = values
+        self.normalize()
 
     def get_grid_points(self) -> torch.Tensor:
         return get_grid_points(self.coords)
@@ -63,20 +87,8 @@ class HistogramND(Histogram):
 
     def bin(self, x: torch.Tensor) -> torch.Tensor:
         x_proj = self.project(x)
-
-        hist_obj = torch.histogramdd(x_proj, bins=self.edges, density=True)
-        values = hist_obj.hist
-
-        self.values = values
-
-        if self.blur:
-            device = values.device
-            values = values.detach().cpu.numpy()
-            values = scipy.ndimage.gaussian_filter(values, self.blur)
-            values = torch.from_numpy(values)
-            values = self.values.to(device)
-
-        self.normalize()
+        self.values = torch.histogramdd(x_proj, bins=self.edges, density=True).hist
+        self.process()
         return self.values
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
@@ -104,13 +116,14 @@ class Histogram1D(Histogram):
         if self.edges is None and self.coords is not None:
             self.edges = coords_to_edges(self.coords)
 
+        self.bin_size = self.coords[1] - self.coords[0]
+        self.bin_volume = self.bin_width = self.bin_size
+
         self.shape = len(self.coords)
         self.values = values
         if self.values is None:
             self.values = torch.zeros(self.shape)
-
-        self.bin_size = self.coords[1] - self.coords[0]
-        self.bin_volume = self.bin_width = self.bin_size
+        self.normalize()
 
     def copy(self) -> Self:
         return copy.deepcopy(self)
@@ -125,24 +138,32 @@ class Histogram1D(Histogram):
             values = values / values_sum / self.bin_volume
         self.values = values
 
+    def process(self) -> None:
+        values = torch.clone(self.values)
+
+        if self.blur:
+            device = values.device
+            values = values.detach().cpu().numpy()
+            values = scipy.ndimage.gaussian_filter(values, self.blur)
+            values = torch.from_numpy(values)
+            values = values.to(device)
+
+        if self.thresh > 0:
+            min_value = self.thresh
+            if self.thresh_type == "frac":
+                min_value = torch.max(values) * self.thresh
+            values[values < min_value] = 0.0
+
+        self.values = values
+        self.normalize()
+
     def project(self, x: torch.Tensor) -> torch.Tensor:
         return x[:, self.axis]
 
     def bin(self, x: torch.Tensor) -> torch.Tensor:
         x_proj = self.project(x)
-
-        hist_obj = torch.histogram(x_proj, bins=self.edges, density=True)
-        values = hist_obj.hist
-
-        if self.blur:
-            device = values.device
-            values = values.detach().cpu.numpy()
-            values = scipy.ndimage.gaussian_filter1d(values, self.blur)
-            values = torch.from_numpy(values)
-            values = self.values.to(device)
-
-        self.values = values
-        self.normalize()
+        self.values = torch.histogram(x_proj, bins=self.edges, density=True).hist
+        self.process()
         return self.values
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:

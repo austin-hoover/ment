@@ -149,7 +149,7 @@ class MENT:
         integration_limits: list[tuple[float, float]] = None,
         integration_size: int = None,
         integration_loop: bool = True,
-        store_integration_points: bool = True,
+        diag_kws: dict = None,
         verbose: int = 1,
         mode: str = "sample",
     ) -> None:
@@ -182,11 +182,9 @@ class MENT:
             projection axis;  at each point, compute the (N - M)-dimensional integral.
             If False, compute projection by evaluating all points at once on an
             N-dimensional grid, then summing over the (N - M) integration axes.
-        store_integration_points:
-            Whether to keep the integration points in memory.
-        interpolation_kws:
-            Key word arguments passed to `scipy.interpolate.RegularGridInterpolator` for
-            interpolating the Lagrange multiplier functions.
+        diag_kws:
+            Key word arguments passed to `Histogram` constructor. Options include
+            `blur`, `thresh`, and `thresh_type`.
         verbose:
             Whether to print updates during calculations.
         mode:
@@ -200,9 +198,17 @@ class MENT:
         self.transforms = transforms
         self.projections = self.set_projections(projections)
 
+        if diag_kws is None:
+            diag_kws = {}
+
         self.diagnostics = []
         for index in range(len(self.projections)):
-            self.diagnostics.append([hist.copy() for hist in self.projections[index]])
+            self.diagnostics.append([])
+            for diag in self.projections[index]:
+                diag_new = diag.copy()
+                for key, val in diag_kws.items():
+                    setattr(diag_new, key, val)
+                self.diagnostics[-1].append(diag_new)
 
         self.prior = prior
         if self.prior is None:
@@ -220,7 +226,6 @@ class MENT:
         self.integration_size = integration_size
         self.integration_points = None
         self.integration_loop = integration_loop
-        self.store_integration_points = store_integration_points
 
         self.iteration = 0
 
