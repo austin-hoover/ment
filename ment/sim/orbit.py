@@ -92,6 +92,7 @@ class ORBITTransform:
         axis: tuple[int, ...],
         index_start: int,
         index_stop: int,
+        turns: int = 1,
     ) -> None:
         self.lattice = lattice
         self.bunch = bunch
@@ -102,11 +103,12 @@ class ORBITTransform:
     def track_bunch(self) -> Bunch:
         bunch = Bunch()
         self.bunch.copyBunchTo(bunch)
-        self.lattice.trackBunch(
-            bunch,
-            index_start=self.index_start,
-            index_stop=self.index_stop,
-        )
+        for _ in range(self.turns):
+            self.lattice.trackBunch(
+                bunch,
+                index_start=self.index_start,
+                index_stop=self.index_stop,
+            )
         return bunch
 
     def track_bunch_reverse(self) -> Bunch:
