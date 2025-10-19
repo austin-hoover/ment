@@ -505,7 +505,7 @@ class MENT:
 
         # Update the diagnostic values and return a copy.
         diagnostic.values = values_proj
-        diagnostic.normalize()
+        diagnostic.process()
         return diagnostic.copy()
 
     def gauss_seidel_step(

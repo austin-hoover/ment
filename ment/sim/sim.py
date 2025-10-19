@@ -34,8 +34,8 @@ class IdentityTransform(Transform):
 class LinearTransform(Transform):
     def __init__(self, matrix: torch.Tensor) -> None:
         super().__init__()
-        self.matrix = matrix
-        self.matrix_inv = torch.linalg.inv(matrix)
+        self.matrix = matrix.float()
+        self.matrix_inv = torch.linalg.inv(self.matrix)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.matmul(x, self.matrix.T)
