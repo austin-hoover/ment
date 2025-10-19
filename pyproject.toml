@@ -16,6 +16,7 @@ test = [
     "matplotlib>=3.9,<3.10",
     "ultraplot>=1.0.5",
     "psdist>=2.1.4",
+    "xarray",
 ]
 
 [build-system]
