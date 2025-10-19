@@ -27,7 +27,9 @@ def set_bunch_coords(
     bunch: Bunch, coords: torch.Tensor, axis: tuple[int, ...] = None
 ) -> Bunch:
     if axis is None:
-        axis = list(range(6))
+        axis = tuple(range(6))
+
+    axis = list(axis)
 
     bunch.deleteAllParticles()
     bunch.compress()
@@ -90,8 +92,8 @@ class ORBITTransform:
         lattice: AccLattice,
         bunch: Bunch,
         axis: tuple[int, ...],
-        index_start: int,
-        index_stop: int,
+        index_start: int = 0,
+        index_stop: int = -1,
         turns: int = 1,
     ) -> None:
         self.lattice = lattice
@@ -99,6 +101,7 @@ class ORBITTransform:
         self.axis = axis
         self.index_start = index_start
         self.index_stop = index_stop
+        self.turns = turns
 
     def track_bunch(self) -> Bunch:
         bunch = Bunch()
