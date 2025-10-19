@@ -509,7 +509,7 @@ class MENT:
         return diagnostic.copy()
 
     def gauss_seidel_step(
-        self, learning_rate: float = 1.0, thresh: float = 0.0, thresh_type: str = "frac"
+        self, lr: float = 1.0, thresh: float = 0.0, thresh_type: str = "frac"
     ) -> None:
         """Perform Gauss-Seidel update.
 
@@ -551,7 +551,7 @@ class MENT:
                 )
                 ratio = torch.ones(values_lagr.shape)
                 ratio[idx] = values_meas[idx] / values_pred[idx]
-                values_lagr *= 1.0 + learning_rate * (ratio - 1.0)
+                values_lagr *= 1.0 + lr * (ratio - 1.0)
 
                 # Reset
                 lagrange_function.values = values_lagr
