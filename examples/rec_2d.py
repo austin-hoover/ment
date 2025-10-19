@@ -192,8 +192,10 @@ def plot_model(model: ment.MENT) -> list[plt.Figure]:
 
 # Training loop
 for iteration in range(args.iters):
+    print("ITERATION =", iteration)
+
     if iteration > 0:
-        model.gauss_seidel_step(learning_rate=args.lr)
+        model.gauss_seidel_step(lr=args.lr)
 
     for i, fig in enumerate(plot_model(model)):
         filename = f"fig_{i:02.0f}_{iteration:03.0f}"
