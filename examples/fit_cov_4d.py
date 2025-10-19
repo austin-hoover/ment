@@ -12,6 +12,8 @@ from matplotlib.patches import Ellipse
 
 import ment
 
+plt.style.use("./style.mplstyle")
+
 
 # Arguments
 # --------------------------------------------------------------------------------------
