@@ -207,5 +207,5 @@ for i, x in enumerate([x_true, x_pred]):
         diag_kws=dict(color=color, kind="line"),
         levels=np.linspace(0.01, 1.0, 7),
     )
-plt.savefig(os.path.join(output_dir, "fig_corner_final"))
+plt.savefig(os.path.join(output_dir, "figures", "fig_corner_final"))
 plt.close("all")
