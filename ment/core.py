@@ -503,7 +503,9 @@ class MENT:
         diagnostic.normalize()
         return diagnostic.copy()
 
-    def gauss_seidel_step(self, learning_rate: float = 1.0) -> None:
+    def gauss_seidel_step(
+        self, learning_rate: float = 1.0, thresh: float = 0.0, thresh_type: str = "frac"
+    ) -> None:
         """Perform Gauss-Seidel update.
 
         The update is defined as:
@@ -532,8 +534,16 @@ class MENT:
                 values_meas = torch.clone(hist_meas.values)
                 values_pred = torch.clone(hist_pred.values)
 
+                min_value = 0.0
+                if thresh_type == "frac":
+                    min_value = thresh * torch.max(values_pred)
+                else:
+                    min_value = thresh
+
                 # Update Lagrange multipliers
-                idx = torch.logical_and(values_meas > 0.0, values_pred > 0.0)
+                idx = torch.logical_and(
+                    values_meas > min_value, values_pred > min_value
+                )
                 ratio = torch.ones(values_lagr.shape)
                 ratio[idx] = values_meas[idx] / values_pred[idx]
                 values_lagr *= 1.0 + learning_rate * (ratio - 1.0)
