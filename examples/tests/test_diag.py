@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 import ment
 
-plt.style.use("./style.mplstyle")
+plt.style.use("../style.mplstyle")
 
 
 # Setup
