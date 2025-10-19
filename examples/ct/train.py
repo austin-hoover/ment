@@ -226,7 +226,7 @@ for iteration in range(args.iters):
 
     # Update model
     if iteration > 0:
-        model.gauss_seidel_step(learning_rate=args.lr)
+        model.gauss_seidel_step(lr=args.lr)
 
     # Evaluate model
     results = evaluate_model(model)

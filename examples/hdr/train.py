@@ -262,4 +262,4 @@ for iteration in range(7):
     plt.close("all")
 
     # Update the model parameters (Lagrange multipliers).
-    model.gauss_seidel_step(learning_rate=0.85)
+    model.gauss_seidel_step(lr=0.85)
