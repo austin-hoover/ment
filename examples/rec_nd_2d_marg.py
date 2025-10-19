@@ -1,4 +1,4 @@
-"""ND reconstruction from 1D marginal projections."""
+"""ND reconstruction from 2D marginal projections."""
 import argparse
 import os
 import pathlib
