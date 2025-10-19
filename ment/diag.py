@@ -1,11 +1,14 @@
 import copy
+from typing import Self
+
+import numpy as np
 import scipy.ndimage
 import torch
-from typing import Self
 
 from .utils import coords_to_edges
 from .utils import edges_to_coords
 from .utils import get_grid_points
+from .utils import weighted_average
 
 
 class Histogram:
@@ -24,7 +27,7 @@ class HistogramND(Histogram):
         edges: list[torch.Tensor] = None,
         coords: list[torch.Tensor] = None,
         values: torch.Tensor = None,
-        **kws
+        **kws,
     ) -> None:
         super().__init__(**kws)
 
@@ -95,6 +98,27 @@ class HistogramND(Histogram):
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         return self.bin(x)
 
+    def cov(self) -> torch.Tensor:
+        S = np.zeros((self.ndim, self.ndim))
+
+        values_sum = torch.sum(self.values)
+        if values_sum <= 0.0:
+            return S
+
+        COORDS = np.meshgrid(*self.coords, indexing="ij")
+        coords_mean = np.array(
+            [weighted_average(C, weights=self.values) for C in COORDS]
+        )
+        for i in range(self.ndim):
+            for j in range(i + 1):
+                X = COORDS[i] - coords_mean[i]
+                Y = COORDS[j] - coords_mean[j]
+                EX = torch.sum(self.values * X) / values_sum
+                EY = torch.sum(self.values * Y) / values_sum
+                EXY = np.sum(self.values * X * Y) / values_sum
+                S[i, j] = S[j, i] = EXY - EX * EY
+        return S
+
 
 class Histogram1D(Histogram):
     def __init__(
@@ -103,7 +127,7 @@ class Histogram1D(Histogram):
         edges: torch.Tensor = None,
         coords: torch.Tensor = None,
         values: torch.Tensor = None,
-        **kws
+        **kws,
     ) -> None:
         super().__init__(**kws)
 
@@ -169,3 +193,14 @@ class Histogram1D(Histogram):
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         return self.bin(x)
+
+    def var(self) -> torch.Tensor:
+        values_sum = torch.sum(self.values)
+        if values_sum <= 0.0:
+            raise ValueError("Histogram values are zero.")
+
+        x = self.coords
+        f = self.values
+        x_avg = weighted_average(x, weights=f)
+        x_var = weighted_average((x - x_avg) ** 2, weights=f)
+        return x_var

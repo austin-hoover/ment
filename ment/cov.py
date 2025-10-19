@@ -2,12 +2,17 @@
 import math
 from typing import Callable
 
+import numpy as np
 import torch
 import scipy.optimize
 from scipy.optimize import OptimizeResult
 from scipy.optimize import Bounds
 
 from .diag import Histogram
+from .diag import Histogram1D
+from .diag import HistogramND
+from .sim import simulate
+from .utils import unravel
 
 
 def normalize_eigvec(v: torch.Tensor) -> torch.Tensor:
@@ -145,7 +150,7 @@ class CovFitterBase:
         self.lb = None
         self.ub = None
 
-        self.rng = torch.random.default_rng(seed)
+        self.rng = np.random.default_rng(seed)
         self.loss_scale = loss_scale
         self.emittance_penalty = emittance_penalty
 
@@ -154,66 +159,54 @@ class CovFitterBase:
 
         self.diagnostics = []
         for i in range(len(projections)):
-            self.diagnostics.append([proj.copy() for proj in projections[i]])
-
-        self.moments = []
-        for proj in unravel(projections):
-            if proj.ndim == 1:
-                self.moments.append(proj.std() ** 2)
-            else:
-                _moments = proj.cov()
-                _moments = _moments[torch.tril_indices(_moments.ndim)]
-                _moments = _moments.tolist()
-                self.moments.extend(_moments)
-        self.moments = torch.array(self.moments)
+            self.diagnostics.append([p.copy() for p in projections[i]])
 
         self.iteration = 0
         self.nevals = 0
         self.loss = None
         self.best_loss = torch.inf
-        self.best_params = torch.copy(self.params)
+        self.best_params = None
 
-    def set_params(self, params: torch.Tensor) -> None:
+    def set_params(self, params: np.ndarray) -> None:
         """Set covariance matrix parameters."""
-        self.params = torch.clip(params, self.lb, self.ub)
+        self.params = np.clip(params, self.lb, self.ub)
 
-    def build_cov(self) -> torch.Tensor:
+    def build_cov(self) -> np.ndarray:
         """Build covariance matrix from parameters."""
         raise NotImplementedError
 
-    def sample(self, size: int = None) -> torch.Tensor:
+    def sample(self, size: int = None) -> np.ndarray:
         """Sample particles from Gaussian distribution with current covariance matrix."""
         size = size or self.nsamp
         cov_matrix = self.build_cov()
         mean = torch.zeros(self.ndim)
         return self.rng.multivariate_normal(mean, cov_matrix, size=size)
 
-    def simulate(self, x: torch.Tensor) -> torch.Tensor:
-        """Track particles and return predicted moments."""
-        moments_pred = []
-        for index, transform in enumerate(self.transforms):
-            x_out = transform(x)
-            for diagnostic in self.diagnostics[index]:
-                x_out_proj = diagnostic.project(x_out)
-                if diagnostic.ndim == 1:
-                    moment = torch.var(x_out_proj)
-                    moments_pred.append(moment)
-                else:
-                    cov_matrix = torch.cov(x_out_proj.T)
-                    cov_matrix_lt = cov_matrix[torch.tril_indices(cov_matrix.ndim)]
-                    cov_matrix_lt = cov_matrix_lt.tolist()
-                    moments_pred.extend(cov_matrix_lt)
-        return torch.array(moments_pred)
-
     def loss_function(self, params: torch.Tensor) -> float:
         """Minimizes difference between predicted and measured moments."""
         self.set_params(params)
 
         x = self.sample()
-        y_pred = self.simulate(x)
-        y_meas = self.moments
 
-        loss = torch.mean(torch.square(y_pred - y_meas))
+        # loss = 0.0
+        # for i, transform in enumerate(self.transforms):
+        #     x_out = transform(x)
+        #     for j, diagnostic in enumerate(self.diagnostics[i]):
+        #         x_out_proj = diagnostic.project(x_out)
+        #         axis = diagnostic.axis
+        #         if type(axis) is int:
+        #         else:
+        #             cov_matrix_meas =
+
+        projections_pred = unravel(simulate(x, self.transforms, self.diagnostics))
+        projections_meas = unravel(self.projections)
+
+        loss = 0.0
+        for i in range(len(projections_meas)):
+            y_pred = projections_pred[i].values.numpy()
+            y_meas = projections_meas[i].values.numpy()
+            loss += float(np.mean(np.square(y_pred - y_meas)))
+        loss = loss / (i + 1)
         loss = loss * self.loss_scale
 
         self.loss = loss
@@ -224,7 +217,7 @@ class CovFitterBase:
 
         if loss < self.best_loss:
             self.best_loss = loss
-            self.best_params = torch.copy(params)
+            self.best_params = torch.clone(torch.as_tensor(params))
 
         return loss
 
@@ -233,7 +226,7 @@ class CovFitterBase:
     ) -> tuple[torch.Tensor, OptimizeResult]:
         """Fit parameters to data."""
 
-        def callback_base():
+        def callback(intermediate_result):
             self.iteration += 1
             if self.verbose > 0:
                 print(
@@ -243,97 +236,16 @@ class CovFitterBase:
                 print(f"cov_matrix:")
                 print(self.build_cov())
 
-        result = None
+        opt_kws.setdefault("popsize", 5)
+        opt_kws.setdefault("disp", True)
+        opt_kws.setdefault("maxiter", iters)
 
-        if method == "simplex":
-            opt_kws.setdefault("options", {})
-            opt_kws["options"].setdefault("disp", True)
-            opt_kws["options"].setdefault("maxiter", iters)
-
-            result = scipy.optimize.minimize(
-                self.loss_function,
-                self.params,
-                method="nelder-mead",
-                bounds=scipy.optimize.Bounds(self.lb, self.ub),
-                **opt_kws,
-            )
-
-        elif method == "powell":
-            opt_kws.setdefault("options", {})
-            opt_kws["options"].setdefault("disp", True)
-            opt_kws["options"].setdefault("maxiter", iters)
-
-            result = scipy.optimize.minimize(
-                self.loss_function,
-                self.params,
-                method="powell",
-                bounds=scipy.optimize.Bounds(self.lb, self.ub),
-                **opt_kws,
-            )
-
-        elif method == "l-bfgs-b":
-            opt_kws.setdefault("options", {})
-            opt_kws["options"].setdefault("disp", True)
-            opt_kws["options"].setdefault("maxiter", iters)
-
-            result = scipy.optimize.minimize(
-                self.loss_function,
-                self.params,
-                method="l-bfgs-b",
-                bounds=scipy.optimize.Bounds(self.lb, self.ub),
-                **opt_kws,
-            )
-
-        elif method == "least_squares":
-            opt_kws.setdefault("verbose", 2)
-            opt_kws.setdefault("xtol", 1.00e-15)
-            opt_kws.setdefault("ftol", 1.00e-15)
-            opt_kws.setdefault("gtol", 1.00e-15)
-            opt_kws.setdefault("max_nfev", iters)
-
-            result = scipy.optimize.least_squares(
-                self.loss_function,
-                self.params,
-                # bounds=(self.lb, self.ub),
-                **opt_kws,
-            )
-
-        elif method == "differential_evolution":
-            opt_kws.setdefault("popsize", 5)
-            opt_kws.setdefault("disp", True)
-            opt_kws.setdefault("maxiter", iters)
-
-            result = scipy.optimize.differential_evolution(
-                self.loss_function,
-                scipy.optimize.Bounds(self.lb, self.ub),
-                callback=(lambda intermediate_result: callback_base()),
-                **opt_kws,
-            )
-        elif method == "dual_annealing":
-            result = scipy.optimize.dual_annealing(
-                self.loss_function,
-                scipy.optimize.Bounds(self.lb, self.ub),
-                callback=(lambda x, f, context: callback_base()),
-                **opt_kws,
-            )
-        elif method == "shgo":
-            result = scipy.optimize.shgo(
-                self.loss_function,
-                scipy.optimize.Bounds(self.lb, self.ub),
-                callback=(lambda x: callback_base()),
-                **opt_kws,
-            )
-        elif method == "direct":
-            opt_kws.setdefault("vol_tol", 1.00e-100)
-            opt_kws.setdefault("len_tol", 1.00e-18)
-            result = scipy.optimize.direct(
-                self.loss_function,
-                scipy.optimize.Bounds(self.lb, self.ub),
-                callback=(lambda x: callback_base()),
-                **opt_kws,
-            )
-        else:
-            raise ValueError
+        result = scipy.optimize.differential_evolution(
+            self.loss_function,
+            scipy.optimize.Bounds(self.lb, self.ub),
+            callback=callback,
+            **opt_kws,
+        )
 
         cov_matrix = self.build_cov()
         return cov_matrix, result
@@ -347,32 +259,33 @@ class CholeskyCovFitter(CovFitterBase):
 
         self.nparam = self.ndim * (self.ndim + 1) // 2
 
-        self.L = torch.eye(self.ndim)
+        self.L = np.eye(self.ndim)
         self.z = self.rng.normal(size=(self.nsamp, self.ndim))
 
-        self.idx_diag = (torch.arange(self.ndim), torch.arange(self.ndim))
-        self.idx_offdiag = torch.tril_indices(self.ndim, k=-1)
+        self.idx_diag = (np.arange(self.ndim), np.arange(self.ndim))
+        self.idx_offdiag = np.tril_indices(self.ndim, k=-1)
+        print(self.idx_offdiag)
 
-        self.ub = torch.full(self.nparam, bound)
+        self.ub = np.full(self.nparam, bound)
         self.lb = -self.ub
         self.lb[: self.ndim] = 1.00e-15
 
-        self.params = torch.zeros(self.nparam)
+        self.params = np.zeros(self.nparam)
         self.params[self.ndim :] = 1.0
         self.set_params(self.params)
 
-    def build_cov(self) -> torch.Tensor:
+    def build_cov(self) -> np.array:
         self.L[self.idx_diag] = self.params[: self.ndim]
         self.L[self.idx_offdiag] = self.params[self.ndim :]
-        return torch.matmul(self.L, self.L.T)
+        return np.matmul(self.L, self.L.T)
 
-    def set_cov(self, cov_matrix: torch.Tensor) -> None:
-        L = torch.linalg.cholesky(cov_matrix)
+    def set_cov(self, cov_matrix: np.array) -> None:
+        L = np.linalg.cholesky(cov_matrix)
         self.params[: self.ndim] = L[self.idx_diag]
         self.params[self.ndim :] = L[self.idx_offdiag]
 
     def set_bounds(self, bound: float) -> None:
-        self.ub = torch.full(self.nparam, bound)
+        self.ub = np.full(self.nparam, bound)
         self.lb = -self.ub
         self.lb[: self.ndim] = 1.00e-15
 
@@ -384,7 +297,8 @@ class CholeskyCovFitter(CovFitterBase):
         self.L[self.idx_offdiag] = self.params[self.ndim :]
 
         x = self.rng.normal(size=(size, self.ndim))
-        x = torch.matmul(x, self.L.T)
+        x = np.matmul(x, self.L.T)
+        x = torch.from_numpy(x).float()
         return x
 
 

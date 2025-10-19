@@ -12,6 +12,10 @@ import torch
 from tqdm import tqdm
 
 
+def weighted_average(values: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    return torch.sum(values * weights) / torch.sum(weights)
+
+
 def unravel(iterable):
     return list(itertools.chain.from_iterable(iterable))
 
