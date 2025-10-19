@@ -1,5 +1,5 @@
+"""Test histogram classes."""
 import argparse
-import math
 import os
 import pathlib
 
