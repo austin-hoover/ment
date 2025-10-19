@@ -605,9 +605,6 @@ class MENT:
         self.ndim = state["ndim"]
         self.prior = state["prior"]
         self.sampler = state["sampler"]
-        self.unnorm_matrix = state["unnorm_matrix"]
-        self.unnorm_transform = self.set_unnorm_transform(self.unnorm_matrix)
-
-        self.iteration = state["iteration"]
-        self.lagrange_functions = self.init_lagrange_functions()
+        self.set_unnorm_matrix(state["unnorm_matrix"])
+        self.init_lagrange_functions()
         file.close()

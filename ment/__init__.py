@@ -2,6 +2,7 @@ from . import cov
 from . import diag
 from . import dist
 from . import prior
+from . import train
 from . import samp
 from . import sim
 
