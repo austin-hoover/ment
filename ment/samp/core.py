@@ -1,5 +1,7 @@
 from typing import Callable
 
+import torch
+
 from ..utils import random_shuffle
 from ..utils import random_uniform
 

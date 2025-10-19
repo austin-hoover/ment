@@ -10,9 +10,9 @@ from .cov import CovFitterBase
 from .cov import CholeskyCovFitter
 from .cov import LinearCovFitter
 from .diag import Histogram1D
-from .diag import Histogram2D
+from .diag import HistogramND
 from .prior import GaussianPrior
-from .prior import UniformPrior
+from .prior import InfiniteUniformPrior
 from .samp import *
 from .sim import *
 from .utils import *

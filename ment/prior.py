@@ -36,7 +36,7 @@ class GaussianPrior(Prior):
         return prob
 
 
-class UniformPrior(Prior):
+class InfiniteUniformPrior(Prior):
     def __init__(self, **kws) -> None:
         super().__init__(**kws)
 

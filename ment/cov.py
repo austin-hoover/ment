@@ -1,6 +1,13 @@
 """Covariance matrix analysis/fitting."""
 import math
+from typing import Callable
+
 import torch
+import scipy.optimize
+from scipy.optimize import OptimizeResult
+from scipy.optimize import Bounds
+
+from .diag import Histogram
 
 
 def normalize_eigvec(v: torch.Tensor) -> torch.Tensor:
@@ -221,7 +228,7 @@ class CovFitterBase:
 
     def fit(
         self, method: str = "differential_evolution", iters: int = 500, **opt_kws
-    ) -> tuple[torch.ndarray, OptimizeResult]:
+    ) -> tuple[torch.Tensor, OptimizeResult]:
         """Fit parameters to data."""
 
         def callback_base():

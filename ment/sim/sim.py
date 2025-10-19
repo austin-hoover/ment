@@ -2,8 +2,8 @@ from typing import Callable
 
 import torch
 
-from .diag import Histogram
-from .utils import unravel
+from ..diag import Histogram
+from ..utils import unravel
 
 
 class Transform:
