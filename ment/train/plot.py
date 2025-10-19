@@ -366,7 +366,7 @@ class PlotProj2DContour:
     def __init__(
         self,
         ncols_max: int = 7,
-        lim_share: bool = False,
+        lim_share: bool = True,
         lim_scale: float = 1.0,
         plot_kws_true: dict = None,
         plot_kws_pred: dict = None,
