@@ -19,6 +19,7 @@ class RegularGridInterpolator:
 
     https://github.com/sbarratt/torch_interpolations/blob/master/torch_interpolations/multilinear.py
     """
+
     def __init__(
         self, coords: list[torch.Tensor], values: torch.Tensor, fill_value: float = 0.0
     ) -> None:
@@ -89,6 +90,7 @@ class LagrangeFunction:
 
     This function can be evaluated at any point by interpolation.
     """
+
     def __init__(
         self,
         ndim: int,
@@ -220,7 +222,7 @@ class MENT:
         self.integration_loop = integration_loop
         self.store_integration_points = store_integration_points
 
-        self.epoch = 0
+        self.iteration = 0
 
     def set_unnorm_transform(self, unnorm_matrix: torch.Tensor) -> None:
         """Set inverse of normalization matrix.
@@ -423,7 +425,9 @@ class MENT:
 
                 # Initialize array of projected densities (values_proj).
                 values_proj = torch.zeros(projection_points.shape[0])
-                for i, point in enumerate(wrap_tqdm(projection_points, self.verbose > 1)):
+                for i, point in enumerate(
+                    wrap_tqdm(projection_points, self.verbose > 1)
+                ):
                     # Set values of u along projection axis.
                     for k, axis in enumerate(projection_axis):
                         if diagnostic.ndim == 1:
@@ -449,7 +453,6 @@ class MENT:
                 if np.ndim(projection_grid_coords[0]) == 0:
                     projection_grid_coords = [projection_grid_coords]
 
-
                 # Get coordinates along each axis of integration grid.
                 integration_axis = [
                     axis for axis in range(self.ndim) if axis not in projection_axis
@@ -459,7 +462,6 @@ class MENT:
                 integration_limits = self.integration_limits[index][diag_index]
                 if (integration_ndim == 1) and (np.ndim(integration_limits) == 1):
                     integration_limits = [integration_limits]
-
 
                 integration_grid_resolution = int(
                     self.integration_size ** (1.0 / integration_ndim)
@@ -541,4 +543,4 @@ class MENT:
                 lagrange_function.set_values(lagrange_function.values)
                 self.lagrange_functions[index][diag_index] = lagrange_function
 
-        self.epoch += 1
+        self.iteration += 1

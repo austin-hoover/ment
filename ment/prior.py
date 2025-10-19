@@ -23,14 +23,13 @@ class Prior:
 class GaussianPrior(Prior):
     def __init__(self, scale: torch.Tensor | float, **kws) -> None:
         super().__init__(**kws)
-        self.scale = scale
-        if type(self.scale) is not torch.Tensor:
+        self.scale = torch.as_tensor(scale)
+        if self.scale.numel() < self.ndim:
             self.scale = self.scale * torch.ones(self.ndim)
 
     def prob(self, x: torch.Tensor) -> torch.Tensor:
-        denom = math.sqrt((2.0 * math.pi) ** self.ndim) * torch.sqrt(
-            torch.prod(self.scale)
-        )
+        denom = math.sqrt((2.0 * math.pi) ** self.ndim)
+        denom *= torch.sqrt(torch.prod(self.scale))
         prob = torch.exp(-0.5 * torch.sum(torch.square(x / self.scale), axis=1))
         prob = prob / denom
         return prob
@@ -42,8 +41,3 @@ class InfiniteUniformPrior(Prior):
 
     def prob(self, x: torch.Tensor) -> torch.Tensor:
         return torch.ones(x.shape[0])
-
-
-def sphere_volume(ndim: int, radius: float) -> float:
-    factor = (math.pi ** (0.5 * ndim)) / scipy.special.gamma(1.0 + 0.5 * ndim)
-    return factor * (radius**ndim)

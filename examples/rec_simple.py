@@ -1,15 +1,26 @@
+"""Simple 2D MENT reconstruction."""
+import argparse
 import os
 import pathlib
 
-import numpy as np
 import matplotlib.pyplot as plt
+import torch
 
 import ment
 
+plt.style.use("./style.mplstyle")
 
-# Settings
+
+# Setup
+# --------------------------------------------------------------------------------------
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--nmeas", type=int, default=7)
+parser.add_argument("--mode", type=str, default="integrate")
+parser.add_argument("--iters", type=int, default=4)
+args = parser.parse_args()
+
 ndim = 2
-nmeas = 7
 seed = 0
 
 path = pathlib.Path(__file__)
@@ -20,11 +31,11 @@ os.makedirs(output_dir, exist_ok=True)
 # Ground truth distribution
 # --------------------------------------------------------------------------------------
 
-rng = np.random.default_rng(seed)
-x_true = rng.normal(size=(1_000_000, ndim))
-x_true = x_true / np.linalg.norm(x_true, axis=1)[:, None]
+rng = torch.Generator()
+x_true = torch.randn(size=(1_000_000, ndim), generator=rng)
+x_true = x_true / torch.linalg.norm(x_true, axis=1)[:, None]
 x_true = x_true * 1.5
-x_true = x_true + rng.normal(size=x_true.shape, scale=0.25)
+x_true = x_true + 0.25 * torch.randn(size=x_true.shape)
 
 
 # Forward model
@@ -33,21 +44,14 @@ x_true = x_true + rng.normal(size=x_true.shape, scale=0.25)
 # Create a list of transforms. Each transform is a function with the call signature
 # `transform(x: np.ndarray) -> np.ndarray`.
 
-
-def rotation_matrix(angle: float) -> np.ndarray:
-    M = [[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]]
-    M = np.array(M)
-    return M
-
-
 transforms = []
-for angle in np.linspace(0.0, np.pi, nmeas, endpoint=False):
-    M = rotation_matrix(angle)
-    transform = ment.sim.LinearTransform(M)
+for i in range(args.nmeas):
+    angle = torch.pi * (i / args.nmeas)
+    transform = ment.LinearTransform(ment.utils.rotation_matrix(angle))
     transforms.append(transform)
 
 # Create a list of histogram diagnostics for each transform.
-bin_edges = np.linspace(-4.0, 4.0, 55)
+bin_edges = torch.linspace(-4.0, 4.0, 55)
 diagnostics = []
 for transform in transforms:
     diagnostic = ment.diag.Histogram1D(axis=0, edges=bin_edges)
@@ -70,15 +74,13 @@ prior = ment.GaussianPrior(ndim=2, scale=[1.0, 1.0])
 
 # Define particle sampler (if mode="sample")
 sampler = ment.GridSampler(
-    grid_limits=(2 * [(-4.0, 4.0)]),
-    grid_shape=(128, 128),
+    limits=(2 * [(-4.0, 4.0)]),
+    shape=(128, 128),
 )
 
-# Define integration grid (if mode="integrate"). You need separate integration
+# Define integration grid (if mode="integrate"). We need separate integration
 # limits for each measurement.
-integration_limits = [
-    (-4.0, 4.0),
-]
+integration_limits = [(-4.0, 4.0)]
 integration_limits = [[integration_limits for _ in diagnostics] for _ in transforms]
 integration_size = 100
 
@@ -91,8 +93,8 @@ model = ment.MENT(
     sampler=sampler,
     integration_limits=integration_limits,
     integration_size=integration_size,
-    integration_loop=False,
-    mode="integrate",
+    integration_loop=True,
+    mode=args.mode,
 )
 
 
@@ -104,14 +106,14 @@ def plot_model(model):
     # Sample particles
     x_pred = model.sample(100_000)
 
-    # Plot sim vs. measured profiles
+    # Plot simulated vs. measured profiles
     projections_true = ment.unravel(model.projections)
     projections_pred = ment.unravel(
         ment.simulate(x_pred, model.transforms, model.diagnostics)
     )
 
     fig, axs = plt.subplots(
-        ncols=nmeas,
+        ncols=args.nmeas,
         figsize=(11.0, 1.0),
         sharey=True,
         sharex=True,
@@ -127,14 +129,14 @@ def plot_model(model):
     return fig
 
 
-for epoch in range(4):
-    print("epoch =", epoch)
+for iteration in range(args.iters):
+    print("iteration =", iteration)
 
-    if epoch > 0:
+    if iteration > 0:
         model.gauss_seidel_step(learning_rate=0.90)
 
     fig = plot_model(model)
-    fig.savefig(os.path.join(output_dir, f"fig_proj_{epoch:02.0f}.png"))
+    fig.savefig(os.path.join(output_dir, f"fig_proj_{iteration:02.0f}.png"))
     plt.close("all")
 
 
@@ -144,5 +146,5 @@ x_pred = model.sample(x_true.shape[0])
 fig, axs = plt.subplots(ncols=2, figsize=(6.0, 3.0), constrained_layout=True)
 for ax, x in zip(axs, [x_pred, x_true]):
     ax.hist2d(x[:, 0], x[:, 1], bins=55, range=[(-4.0, 4.0), (-4.0, 4.0)])
-fig.savefig(os.path.join(output_dir, f"fig_dist_{epoch:02.0f}.png"))
+fig.savefig(os.path.join(output_dir, f"fig_dist_{iteration:02.0f}.png"))
 plt.close("all")

@@ -15,5 +15,10 @@ from .diag import HistogramND
 from .prior import GaussianPrior
 from .prior import InfiniteUniformPrior
 from .samp import *
-from .sim import *
+from .sim import simulate
+from .sim import simulate_with_diag_update
+from .sim import Transform
+from .sim import LinearTransform
+from .sim import IdentityTransform
+from .sim import ComposedTransform
 from .utils import *
