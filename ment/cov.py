@@ -188,27 +188,23 @@ class CovFitterBase:
 
         x = self.sample()
 
-        # loss = 0.0
-        # for i, transform in enumerate(self.transforms):
-        #     x_out = transform(x)
-        #     for j, diagnostic in enumerate(self.diagnostics[i]):
-        #         x_out_proj = diagnostic.project(x_out)
-        #         axis = diagnostic.axis
-        #         if type(axis) is int:
-        #         else:
-        #             cov_matrix_meas =
-
-        projections_pred = unravel(simulate(x, self.transforms, self.diagnostics))
-        projections_meas = unravel(self.projections)
-
         loss = 0.0
-        for i in range(len(projections_meas)):
-            y_pred = projections_pred[i].values.numpy()
-            y_meas = projections_meas[i].values.numpy()
-            loss += float(np.mean(np.square(y_pred - y_meas)))
+        for i, transform in enumerate(self.transforms):
+            x_out = transform(x)
+            for j, diagnostic in enumerate(self.diagnostics[i]):
+                x_out_proj = diagnostic.project(x_out)
+                axis = diagnostic.axis
+                if type(axis) is int:
+                    var_pred = torch.var(x_out_proj)
+                    var_meas = self.projections[i][j].var()
+                    loss += torch.abs(var_pred - var_meas)
+                else:
+                    cov_matrix_pred = torch.cov(x_out_proj.T)
+                    cov_matrix_meas = self.projections[i][j].cov()
+                    loss += torch.mean(torch.abs(cov_matrix_pred - cov_matrix_meas))
+
         loss = loss / (i + 1)
         loss = loss * self.loss_scale
-
         self.loss = loss
         self.nevals += 1
 
