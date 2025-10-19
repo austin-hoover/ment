@@ -36,8 +36,8 @@ class FlowSampler(Sampler):
         self.train_kws.setdefault("lr", 0.001)
         self.train_kws.setdefault("lr_min", 0.001)
         self.train_kws.setdefault("lr_decay", 0.99)
-        self.train_kws.setdefault("print_freq", 100)
-        self.train_kws.setdefault("verbose", 0)
+        self.train_kws.setdefault("print_freq", 1)
+        self.train_kws.setdefault("verbose", self.verbose)
 
         self.results = {}
         self.results["loss"] = []

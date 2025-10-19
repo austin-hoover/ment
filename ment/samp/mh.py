@@ -122,7 +122,9 @@ class MetropolisHastingsSampler(Sampler):
             print("debug acceptance rate =", self.results["acceptance_rate"])
             for axis in range(self.ndim):
                 x_chain_stds = [torch.std(x_chain[:, axis]) for x_chain in points]
+                x_chain_stds = torch.stack(x_chain_stds)
                 x_chain_avgs = [torch.mean(x_chain[:, axis]) for x_chain in points]
+                x_chain_avgs = torch.stack(x_chain_avgs)
                 print(
                     f"debug axis={axis} between-chain avg(x_chain_std) =",
                     torch.mean(x_chain_stds),
