@@ -49,13 +49,13 @@ class ComposedTransform(Transform):
         self.transforms = transforms
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        u = x.copy()
+        u = x.clone()
         for transform in self.transforms:
             u = transform(u)
         return u
 
     def inverse(self, u: torch.Tensor) -> torch.Tensor:
-        x = u.copy()
+        x = u.clone()
         for transform in reversed(self.transforms):
             x = transform.inverse(x)
         return x
