@@ -6,6 +6,7 @@ from . import samp
 from . import sim
 
 from .core import MENT
+from .core import LagrangeFunction
 from .cov import CovFitterBase
 from .cov import CholeskyCovFitter
 from .cov import LinearCovFitter
