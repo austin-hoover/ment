@@ -1,4 +1,9 @@
-"""2D MENT reconstruction in normalized coordinates."""
+"""2D MENT reconstruction in normalized coordinates.
+
+The normalization matrix is determined by a covariance matrix. Typically the
+covariance matrix will be determined from the measurements by a separate fitting
+routine.
+"""
 import argparse
 import math
 import os
