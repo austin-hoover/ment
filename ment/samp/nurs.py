@@ -10,6 +10,8 @@ import numpy as np
 import scipy.special
 import tqdm
 
+from .core import Sampler
+
 
 @dataclass
 class Tree:
@@ -141,3 +143,8 @@ def sample_nurs(
     for m in tqdm.tqdm(range(1, n_draws), initial=1, total=n_draws):
         draws[m], accepts[m], depths[m] = transition(draws[m - 1])
     return draws, accepts, depths
+
+
+class NURSSampler(Sampler):
+    def __init__(self) -> None:
+        raise NotImplementedError()
