@@ -1,3 +1,4 @@
-https://arxiv.org/abs/2409.17915
+# 6D Argonne Wakefield Accelerator reconstruction
 
-https://zenodo.org/records/15352529
+Paper: https://doi.org/10.1103/zl2h-3v32
+Code: https://zenodo.org/records/15352529

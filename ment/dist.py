@@ -1,5 +1,7 @@
 from typing import Callable
+
 import numpy as np
+import torch
 import scipy.stats
 
 
@@ -49,10 +51,10 @@ class Distribution:
         self.decorr = decorr
         self.transform = transform
 
-    def prob(self, x: np.ndarray) -> np.ndarray:
+    def prob(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
-    def sample(self, size: int) -> np.ndarray:
+    def sample(self, size: int) -> torch.Tensor:
         x = self._sample(int(size))
         if self.shuffle:
             x = shuffle(x, rng=self.rng)
@@ -64,6 +66,8 @@ class Distribution:
             x = decorrelate(x, rng=self.rng)
         if self.transform is not None:
             x = self.transform(x)
+        x = torch.from_numpy(x)
+        x = x.float()
         return x
 
     def _sample(self, n: int) -> np.ndarray:

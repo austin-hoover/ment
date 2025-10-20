@@ -1,4 +1,6 @@
-import numpy as np
+import math
+import torch
+
 from ment.sim import Transform
 
 
@@ -14,9 +16,9 @@ class AxiallySymmetricNonlinearKick(Transform):
         self.E = E
         self.T = T
 
-    def forward(self, x: np.ndarray) -> np.ndarray:
-        r = np.sqrt(x[:, 0] ** 2 + x[:, 2] ** 2)
-        t = np.arctan2(x[:, 2], x[:, 0])
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r = torch.sqrt(x[:, 0] ** 2 + x[:, 2] ** 2)
+        t = torch.arctan2(x[:, 2], x[:, 0])
 
         alpha = self.alpha
         beta = self.beta
@@ -25,16 +27,16 @@ class AxiallySymmetricNonlinearKick(Transform):
         A = self.A
         T = self.T
 
-        dr = -(1.0 / (beta * np.sin(phi))) * ((E * r) / (A * r**2 + T)) - (
-            (2.0 * r) / (beta * np.tan(phi))
+        dr = -(1.0 / (beta * math.sin(phi))) * ((E * r) / (A * r**2 + T)) - (
+            (2.0 * r) / (beta * math.tan(phi))
         )
 
-        x_out = np.copy(x)
-        x_out[:, 1] += dr * np.cos(t)
-        x_out[:, 3] += dr * np.sin(t)
+        x_out = torch.clone(x)
+        x_out[:, 1] += dr * torch.cos(t)
+        x_out[:, 3] += dr * torch.sin(t)
         return x_out
 
-    def inverse(self, x: np.ndarray) -> np.ndarray:
+    def inverse(self, x: torch.Tensor) -> torch.Tensor:
         x[:, 1] *= -1.0
         X = self.forward(X)
         X[:, 1] *= -1.0

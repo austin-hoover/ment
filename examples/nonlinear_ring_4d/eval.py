@@ -2,12 +2,14 @@ import argparse
 import os
 import pathlib
 import shutil
-import sys
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import ment
+import torch
 import numpy as np
 from scipy.ndimage import gaussian_filter
+
+import ment
 
 # local
 from utils import make_dist
@@ -93,7 +95,7 @@ for log in [False, True]:
         values_list = []
         for i, x_out in enumerate([x_pred_out, x_true_out]):
             actions = get_actions(x_out)
-            sqrt_actions = np.sqrt(actions)
+            sqrt_actions = torch.sqrt(actions)
 
             xmax = 4.0
             limits = 2 * [(0.0, xmax)]

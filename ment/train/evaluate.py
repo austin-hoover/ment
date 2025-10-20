@@ -1,4 +1,5 @@
-import numpy as np
+import torch
+
 from ..core import MENT
 from ..sim import simulate
 from ..utils import unravel
@@ -13,13 +14,13 @@ def evaluate_model(model: MENT, nsamp: int) -> dict:
     for projection_meas, projection_pred in zip(projections_meas, projections_pred):
         y_meas = projection_meas.values
         y_pred = projection_pred.values
-        discrepancy = np.mean(np.abs(y_pred - y_meas))
+        discrepancy = torch.mean(torch.abs(y_pred - y_meas))
         discrepancy_vector.append(discrepancy)
 
-    discrepancy_vector = np.array(discrepancy_vector)
-    discrepancy = np.sum(discrepancy_vector) / len(discrepancy_vector)
+    discrepancy_vector = torch.stack(discrepancy_vector)
+    discrepancy = torch.sum(discrepancy_vector) / len(discrepancy_vector)
 
-    cov_matrix = np.cov(x.T)
+    cov_matrix = torch.cov(x.T)
 
     result = {}
     result["discrepancy"] = discrepancy

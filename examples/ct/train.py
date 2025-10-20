@@ -1,5 +1,7 @@
 """Test 2D MENT with high-resolution image."""
+
 import argparse
+import math
 import os
 import pathlib
 import pickle
@@ -8,9 +10,11 @@ from pprint import pprint
 
 import numpy as np
 import matplotlib.pyplot as plt
-import ment
 import skimage
+import torch
 from tqdm import tqdm
+
+import ment
 
 from utils import gen_image
 from utils import get_grid_points
@@ -18,11 +22,10 @@ from utils import rec_fbp
 from utils import rec_sart
 from utils import radon_transform
 
-plt.rcParams["figure.constrained_layout.use"] = True
+
+plt.style.use("../style.mplstyle")
 plt.rcParams["image.cmap"] = "Blues"
 plt.rcParams["savefig.dpi"] = 700.0
-plt.rcParams["xtick.minor.visible"] = True
-plt.rcParams["ytick.minor.visible"] = True
 
 
 # Arguments
@@ -41,7 +44,6 @@ parser.add_argument("--angle-min", type=float, default=0.0)
 parser.add_argument("--iters", type=int, default=10)
 parser.add_argument("--lr", type=float, default=0.25)
 parser.add_argument("--prior-scale", type=float, default=10.0)
-parser.add_argument("--int-loop", type=int, default=0)
 parser.add_argument("--show", action="store_true")
 parser.add_argument("--verbose", type=int, default=0)
 
@@ -56,7 +58,7 @@ ndim = 2
 nmeas = args.nmeas
 
 path = pathlib.Path(__file__)
-timestamp = time.strftime("%y%m%d%H%M%S")
+timestamp = time.strftime("%y%m%d_%H%M%S")
 output_dir = os.path.join("outputs", path.stem, timestamp)
 os.makedirs(output_dir, exist_ok=True)
 
@@ -73,12 +75,14 @@ grid_res = args.im_res
 grid_shape = (grid_res, grid_res)
 grid_values = gen_image(args.im, res=args.im_res, blur=args.im_blur, pad=args.im_pad)
 grid_values = grid_values.T
-grid_values_true = grid_values.copy()
+grid_values = torch.from_numpy(grid_values).float()
+grid_values_true = torch.clone(grid_values)
 
 xmax = 1.0
-grid_edges = 2 * [np.linspace(-xmax, xmax, grid_res + 1)]
+grid_edges = 2 * [torch.linspace(-xmax, xmax, grid_res + 1)]
 grid_coords = [0.5 * (e[:-1] + e[1:]) for e in grid_edges]
 grid_points = get_grid_points(grid_coords)
+grid_points = torch.from_numpy(grid_points).float()
 
 # Plot image
 fig, ax = plt.subplots()
@@ -90,13 +94,13 @@ plt.close()
 # Forward model
 # --------------------------------------------------------------------------------------
 
-angles = np.linspace(args.angle_min, args.angle_max, args.nmeas, endpoint=False)
-angles = np.radians(angles)
+angles = torch.linspace(args.angle_min, args.angle_max, args.nmeas + 1)[:-1]
+angles = angles * torch.pi / 180.0
 
 transforms = []
 for angle in angles:
     matrix = ment.utils.rotation_matrix(angle)
-    transform = ment.sim.LinearTransform(matrix)
+    transform = ment.LinearTransform(matrix)
     transforms.append(transform)
 
 
@@ -105,47 +109,17 @@ for angle in angles:
 
 print("Generating training data")
 
-sinogram = radon_transform(grid_values_true, angles)
+sinogram = radon_transform(grid_values_true.numpy(), angles.numpy())
 
 projections = []
 for j in range(sinogram.shape[1]):
     projection = ment.Histogram1D(
-        values=sinogram[:, j],
-        coords=grid_coords[0],
         axis=0,
+        values=torch.from_numpy(sinogram[:, j]),
+        coords=grid_coords[0],
     )
     projection.normalize()
     projections.append([projection])
-
-
-## The following method uses linear interpolation directly rather than calling
-## `skimage.transform.radon`.
-# import scipy.interpolate
-
-# interp = scipy.interpolate.RegularGridInterpolator(
-#     grid_coords,
-#     grid_values_true,
-#     method="linear",
-#     fill_value=0.0,
-#     bounds_error=False,
-# )
-
-# projections = []
-# for transform in tqdm(transforms):
-#     grid_points_out = transform.inverse(grid_points)
-#     grid_values_out = interp(grid_points_out)
-#     grid_values_out = grid_values_out.reshape(grid_shape)
-#     grid_values_out_proj = np.sum(grid_values_out, axis=1)
-
-#     projection = ment.Histogram1D(
-#         values=grid_values_out_proj,
-#         coords=grid_coords[0],
-#         axis=0,
-#         thresh=0.1,
-#         thresh_type="frac",
-#     )
-#     projections.append([projection])
-
 
 # Plot sinogram
 fig, ax = plt.subplots()
@@ -163,7 +137,6 @@ prior = ment.GaussianPrior(ndim=2, scale=args.prior_scale)
 # Define integration grid for each projection.
 integration_limits = [[(-xmax, xmax)] for _ in transforms]
 integration_size = grid_shape[0]
-integration_loop = bool(args.int_loop)
 
 # Create MENT model
 model = ment.MENT(
@@ -174,9 +147,10 @@ model = ment.MENT(
     sampler=None,
     integration_limits=integration_limits,
     integration_size=integration_size,
-    integration_loop=integration_loop,
+    integration_loop=False,
     mode="integrate",
     verbose=args.verbose,
+    diag_kws=dict(thresh=0.001, thresh_type="frac"),
 )
 
 
@@ -185,7 +159,7 @@ model = ment.MENT(
 
 
 def plot_sinogram(model: ment.MENT):
-    image_true = grid_values_true.copy()
+    image_true = grid_values_true.clone()
     image_pred = model.prob(grid_points).reshape(grid_shape)
 
     sinogram_true = radon_transform(image_true, angles=angles)
@@ -197,8 +171,8 @@ def plot_sinogram(model: ment.MENT):
     return fig, axs
 
 
-def plot_image(model: ment.MENT):
-    image_true = grid_values_true.copy()
+def plot_image(model: ment.MENT) -> tuple[plt.Figure, plt.Axes]:
+    image_true = grid_values_true.clone()
     image_pred = model.prob(grid_points).reshape(grid_shape)
 
     fig, axs = plt.subplots(ncols=2, figsize=(6, 3))
@@ -208,8 +182,11 @@ def plot_image(model: ment.MENT):
 
 
 def evaluate_model(model: ment.MENT) -> dict:
-    values_true = grid_values_true.copy()
+    values_true = grid_values_true.clone()
     values_pred = model.prob(grid_points).reshape(grid_shape)
+
+    values_true = values_true.numpy()
+    values_pred = values_pred.numpy()
 
     cell_volume = np.prod([c[1] - c[0] for c in grid_coords])
     values_true = values_true / np.sum(values_true) / cell_volume
@@ -221,7 +198,6 @@ def evaluate_model(model: ment.MENT) -> dict:
     for j in range(sinogram_true.shape[1]):
         sinogram_true /= np.sum(sinogram_true) / np.sqrt(cell_volume)
         sinogram_pred /= np.sum(sinogram_pred) / np.sqrt(cell_volume)
-
     discrepancy = np.mean(np.abs(sinogram_pred - sinogram_true))
 
     # Absolute entropy
@@ -234,9 +210,9 @@ def evaluate_model(model: ment.MENT) -> dict:
     distance_mae = np.mean(np.abs(values_pred - values_true))
 
     results = {}
-    results["discrepancy"] = discrepancy
-    results["distance_mae"] = distance_mae
-    results["entropy"] = entropy
+    results["discrepancy"] = float(discrepancy)
+    results["distance_mae"] = float(distance_mae)
+    results["entropy"] = float(entropy)
     return results
 
 
@@ -250,11 +226,7 @@ for iteration in range(args.iters):
 
     # Update model
     if iteration > 0:
-        model.gauss_seidel_step(
-            learning_rate=args.lr,
-            thresh=0.001,
-            thresh_type="frac",
-        )
+        model.gauss_seidel_step(lr=args.lr)
 
     # Evaluate model
     results = evaluate_model(model)
@@ -312,10 +284,10 @@ for method in ["fbp", "sart", "ment", "true"]:
 
 
 # Form true image and sinogram
-image_true = grid_values_true.copy()
+image_true = grid_values_true.clone()
 sinogram_true = radon_transform(image_true, angles)
-results["true"]["sinogram"] = sinogram_true.copy()
-results["true"]["image"] = image_true.copy()
+results["true"]["sinogram"] = sinogram_true
+results["true"]["image"] = image_true.numpy()
 
 
 # FBP
@@ -358,7 +330,8 @@ plt.close()
 
 # MENT
 image_pred = model.prob(grid_points).reshape(grid_shape)
-sinogram_pred = radon_transform(image_pred, angles=angles)
+image_pred = image_pred.numpy()
+sinogram_pred = radon_transform(image_pred, angles=angles.numpy())
 results["ment"]["image"] = image_pred.copy()
 results["ment"]["sinogram"] = sinogram_pred.copy()
 
@@ -382,8 +355,8 @@ plt.savefig(os.path.join(output_dir, "fig_compare_image.png"))
 plt.close()
 
 fig, axs = plt.subplots(ncols=4, figsize=(10, 2.5), sharex=True, sharey=True)
-for ax, key in zip(axs, results):
-    image = results[key]["sinogram"]
+for ax, name in zip(axs, results):
+    image = results[name]["sinogram"]
     ax.pcolormesh(image.T, vmin=vmin, vmax=vmax)
     ax.set_title(name.upper())
 plt.savefig(os.path.join(output_dir, "fig_compare_sinogram.png"))

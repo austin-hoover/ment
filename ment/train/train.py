@@ -1,20 +1,15 @@
-import copy
 import os
 import time
-import typing
-from typing import Any
+
 from typing import Callable
-from typing import Optional
 from pprint import pprint
 
 import matplotlib.pyplot as plt
-import numpy as np
 from tqdm.notebook import tqdm as tqdm_nb
 from tqdm import tqdm
 
 from ..core import MENT
 from ..utils import ListLogger
-from ..utils import unravel
 
 
 class Trainer:
@@ -42,8 +37,8 @@ class Trainer:
             self.checkpoint_dir = os.path.join(self.output_dir, f"checkpoints")
             os.makedirs(self.checkpoint_dir, exist_ok=True)
 
-    def get_filename(self, filename: str, epoch: int, ext: str = None) -> str:
-        filename = f"{filename}_{epoch:03.0f}"
+    def get_filename(self, filename: str, iteration: int, ext: str = None) -> str:
+        filename = f"{filename}_{iteration:03.0f}"
         if ext is not None:
             filename = f"{filename}.{ext}"
         return filename
@@ -54,7 +49,7 @@ class Trainer:
         else:
             return tqdm(total=length)
 
-    def plot_model(self, epoch: int, **savefig_kws) -> None:
+    def plot_model(self, iteration: int, **savefig_kws) -> None:
         if self.plot is None:
             return
 
@@ -62,7 +57,7 @@ class Trainer:
 
         for index, fig in enumerate(self.plot(self.model)):
             if self.output_dir is not None:
-                path = self.get_filename(f"fig_{index:02.0f}", epoch, ext=ext)
+                path = self.get_filename(f"fig_{index:02.0f}", iteration, ext=ext)
                 path = os.path.join(self.fig_dir, path)
 
                 print(f"Saving file {path}")
@@ -73,12 +68,12 @@ class Trainer:
 
             plt.close("all")
 
-    def eval_model(self, epoch: int) -> None:
+    def eval_model(self, iteration: int) -> None:
         if self.eval == False:
             return {}
 
         if self.output_dir is not None:
-            path = self.get_filename("model", epoch, ext="pt")
+            path = self.get_filename("model", iteration, ext="pt")
             path = os.path.join(self.checkpoint_dir, path)
 
             print(f"Saving file {path}")
@@ -87,7 +82,7 @@ class Trainer:
         if self.eval is not None:
             return self.eval(self.model)
 
-    def train(self, epochs: int, savefig_kws: dict = None, **kws) -> None:
+    def train(self, iters: int, savefig_kws: dict = None, **kws) -> None:
         """Run Gauss-Seidel relaxation algorithm."""
 
         if savefig_kws is None:
@@ -101,9 +96,9 @@ class Trainer:
 
         start_time = time.time()
 
-        for epoch in range(epochs + 1):
-            if epoch > 0:
-                print("epoch = {}".format(epoch))
+        for iteration in range(iters + 1):
+            if iteration > 0:
+                print("iteration = {}".format(iteration))
                 self.model.gauss_seidel_step(**kws)
 
             # Log info.
@@ -111,12 +106,12 @@ class Trainer:
             # the statistical distance from the true distribution. Then we can
             # print those numbers here. Same goes for `Trainer`.)
             info = dict()
-            info["epoch"] = epoch
+            info["iteration"] = iteration
             info["time"] = time.time() - start_time
             info["D_norm"] = None
             logger.write(info)
 
-            self.plot_model(epoch, **savefig_kws)
+            self.plot_model(iteration, **savefig_kws)
 
-            result = self.eval_model(epoch)
+            result = self.eval_model(iteration)
             pprint(result)
