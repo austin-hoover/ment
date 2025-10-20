@@ -1,5 +1,6 @@
-"""2D MENT reconstruction."""
+"""2D MENT reconstruction in normalized coordinates."""
 import argparse
+import math
 import os
 import pathlib
 import time
@@ -65,13 +66,19 @@ dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=seed, normalize=True)
 x_true = dist.sample(1_000_000)
 x_true = x_true.float()
 
+# Add linear transformation
+M = torch.eye(ndim)
+M[0, 0] = 0.35
+R = ment.utils.rotation_matrix(math.pi * 0.25)
+M = torch.matmul(R, M)
+
+x_true = torch.matmul(x_true, M.T)
+
 
 # Forward model
 # --------------------------------------------------------------------------------------
 
-# Create a list of transforms. Each transform is a function with the call signature
-# `transform(x: np.ndarray) -> np.ndarray`.
-
+# Create a list of transforms.
 transforms = []
 for i in range(args.nmeas):
     angle = torch.pi * (i / args.nmeas)
@@ -97,6 +104,14 @@ projections = ment.simulate(x_true, transforms, diagnostics)
 # Reconstruction model
 # --------------------------------------------------------------------------------------
 
+# Get normalization matrix from covariance
+cov_matrix = torch.cov(x_true.T)
+norm_matrix = ment.cov.build_norm_matrix_from_cov(cov_matrix, scale=True)
+unnorm_matrix = torch.linalg.inv(norm_matrix)
+
+print("V:")
+print(unnorm_matrix)
+
 # Define prior distribution for relative entropy calculation
 prior = ment.GaussianPrior(ndim=2, scale=1.0)
 
@@ -120,6 +135,7 @@ model = ment.MENT(
     transforms=transforms,
     projections=projections,
     prior=prior,
+    unnorm_matrix=unnorm_matrix,
     sampler=sampler,
     integration_limits=integration_limits,
     integration_size=integration_size,
@@ -132,7 +148,7 @@ def plot_model(model: ment.MENT) -> list[plt.Figure]:
     figs = []
 
     # Sample particles
-    x_pred = model.sample(1_000_000)
+    x_pred = model.unnormalize(model.sample(1_000_000))
 
     # Simulate data
     projections_true = ment.unravel(model.projections)
@@ -143,49 +159,40 @@ def plot_model(model: ment.MENT) -> list[plt.Figure]:
     # Plot distribution
     limits = 2 * [(-args.xmax, args.xmax)]
 
-    for log in [False, True]:
-        fig, axs = plt.subplots(ncols=2, figsize=(6.0, 3.0))
-        for i, ax in enumerate(axs):
-            grid_values, grid_edges = np.histogramdd(x_pred, bins=100, range=limits)
-            vmin = 0.0
-            if log:
-                grid_values = np.log10(grid_values + 1.00e-15)
-                vmin = -3.0
-            ax.pcolormesh(grid_edges[0], grid_edges[1], grid_values.T, vmin=vmin)
-        figs.append(fig)
+    fig, axs = plt.subplots(ncols=2, figsize=(6.0, 3.0))
+    for i, ax in enumerate(axs):
+        grid_values, grid_edges = np.histogramdd(x_pred, bins=100, range=limits)
+        ax.pcolormesh(grid_edges[0], grid_edges[1], grid_values.T)
+    figs.append(fig)
 
     # Plot simulated vs. measured projections.
     ncols = min(args.nmeas, 7)
     nrows = int(np.ceil(args.nmeas / ncols))
 
-    for log in [False, True]:
-        fig, axs = plt.subplots(
-            ncols=ncols,
-            nrows=nrows,
-            figsize=(1.90 * ncols, 1.25 * nrows),
-            sharex=True,
-            sharey=True,
+    fig, axs = plt.subplots(
+        ncols=ncols,
+        nrows=nrows,
+        figsize=(1.90 * ncols, 1.25 * nrows),
+        sharex=True,
+        sharey=True,
+    )
+    for index in range(len(projections_true)):
+        ax = axs.flat[index]
+        proj_true = projections_true[index]
+        proj_pred = projections_pred[index]
+        scale = proj_true.values.max()
+        ax.plot(proj_true.coords, proj_true.values / scale, color="lightgray")
+        ax.plot(
+            proj_pred.coords,
+            proj_pred.values / scale,
+            color="black",
+            marker=".",
+            lw=0,
+            ms=1.0,
         )
-        for index in range(len(projections_true)):
-            ax = axs.flat[index]
-            proj_true = projections_true[index]
-            proj_pred = projections_pred[index]
-            scale = proj_true.values.max()
-            ax.plot(proj_true.coords, proj_true.values / scale, color="lightgray")
-            ax.plot(
-                proj_pred.coords,
-                proj_pred.values / scale,
-                color="black",
-                marker=".",
-                lw=0,
-                ms=1.0,
-            )
-            ax.set_ylim(ax.get_ylim()[0], 1.25)
-            ax.set_xlim(limits[0])
-            if log:
-                ax.set_yscale("log")
-                ax.set_ylim(1.00e-05, 5.0)
-        figs.append(fig)
+        ax.set_ylim(ax.get_ylim()[0], 1.25)
+        ax.set_xlim(limits[0])
+    figs.append(fig)
 
     return figs
 
