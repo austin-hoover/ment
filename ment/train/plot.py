@@ -424,7 +424,7 @@ class PlotProj2DContour:
             plot_image(proj_pred.values, proj_pred.edges, ax=ax, **self.plot_kws_pred)
 
         if self.lim_share:
-            ax_ref = axs[0]
+            ax_ref = axs.flat[0]
             for ax in axs.flat:
                 ax.set_xlim(np.multiply(ax_ref.get_xlim(), self.lim_scale))
                 ax.set_ylim(np.multiply(ax_ref.get_ylim(), self.lim_scale))
