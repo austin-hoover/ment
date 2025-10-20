@@ -186,7 +186,7 @@ for iteration in range(4):
     print("iteration =", iteration)
 
     if iteration > 0:
-        model.gauss_seidel_step(learning_rate=0.90)
+        model.gauss_seidel_step(lr=0.90)
 
     fig = plot_model(model)
     fig.savefig(os.path.join(output_dir, f"fig_proj_{iteration:02.0f}.png"))
