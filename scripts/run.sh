@@ -1,8 +1,9 @@
 #!/bin/bash
 
+cd ../examples
+
 find . -type d -name "*.ipynb_checkpoints" -exec rm -rf {} \;
 find . -type f -name "*.DS_Store" -exec rm -rf {} \;
-
 
 for file in *.py ; do
   if [ -f "$file" ]; then
@@ -11,7 +12,6 @@ for file in *.py ; do
   fi
 done
 
-
 for folder in ./*/; do
     cd $folder
     pwd
@@ -19,3 +19,5 @@ for folder in ./*/; do
     find . -type f -name "*.ipynb" -exec echo {} \; -exec jupyter nbconvert --inplace --ExecutePreprocessor.kernel_name=ment --execute {} \;
     cd ..
 done
+
+cd ../scripts
