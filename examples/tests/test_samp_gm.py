@@ -1,4 +1,5 @@
 """Test sampling algorithms (2D)."""
+
 import argparse
 import os
 import pathlib
@@ -10,6 +11,7 @@ import torch
 import zuko
 
 import ment
+from ment.train.plot import CornerGrid
 
 plt.style.use("../style.mplstyle")
 
@@ -19,7 +21,7 @@ plt.style.use("../style.mplstyle")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ndim", type=int, default=6)
-parser.add_argument("--n", type=int, default=25_000)
+parser.add_argument("--n", type=int, default=50_000)
 args = parser.parse_args()
 
 
@@ -91,15 +93,6 @@ x_true = dist.sample(args.n)
 # --------------------------------------------------------------------------------------
 
 
-def plot_samples(x_pred: np.ndarray) -> tuple[plt.Figure, plt.Axes]:
-    fig, axs = plt.subplots(ncols=2, figsize=(5.0, 2.75), sharex=True, sharey=True)
-    for ax, x in zip(axs, [x_pred, x_true]):
-        ax.hist2d(x[:, 0], x[:, 1], bins=80, range=[(-xmax, xmax), (-xmax, xmax)])
-    axs[0].set_title("PRED", fontsize="medium")
-    axs[1].set_title("TRUE", fontsize="medium")
-    return fig, axs
-
-
 def make_sampler(name: str) -> ment.Sampler:
     sampler = None
     if name == "mh":
@@ -145,6 +138,66 @@ def make_sampler(name: str) -> ment.Sampler:
     return sampler
 
 
+def plot_samples_2d(x_pred: np.ndarray) -> tuple[plt.Figure, plt.Axes]:
+    fig, axs = plt.subplots(ncols=2, figsize=(5.0, 2.75), sharex=True, sharey=True)
+    for ax, x in zip(axs, [x_pred, x_true]):
+        ax.hist2d(x[:, 0], x[:, 1], bins=80, range=[(-xmax, xmax), (-xmax, xmax)])
+    axs[0].set_title("PRED", fontsize="medium")
+    axs[1].set_title("TRUE", fontsize="medium")
+    return fig, axs
+
+
+def plot_samples_corner(x: np.ndarray) -> tuple[plt.Figure, plt.Axes]:
+    grid = CornerGrid(
+        ndim=args.ndim,
+        figsize=(ndim * 1.4, ndim * 1.4),
+    )
+    grid.plot(
+        x,
+        bins=85,
+        limits=[(-xmax, xmax)] * args.ndim,
+    )
+    return (grid.fig, grid.axs)
+
+
+def plot_samples_corner_overlay(x_pred: np.ndarray) -> tuple[plt.Figure, plt.Axes]:
+    grid = CornerGrid(
+        ndim=args.ndim,
+        figsize=(ndim * 1.4, ndim * 1.4),
+    )
+    for i, x in enumerate([x_true, x_pred]):
+        color = ["black", "red"][i]
+        grid.plot(
+            x,
+            bins=64,
+            limits=[(-xmax, xmax)] * args.ndim,
+            kind="contour",
+            proc_kws=dict(scale="max", blur=1.0),
+            diag_kws=dict(color=color),
+            levels=np.linspace(0.01, 1.0, 7),
+            colors=color,
+        )
+    return (grid.fig, grid.axs)
+
+
+def plot_samples(x_pred: torch.Tensor) -> None:
+    fig, axs = plot_samples_2d(x_pred)
+    plt.savefig(os.path.join(output_dir, f"fig_01_{name}.png"))
+    plt.close("all")
+
+    fig, axs = plot_samples_corner(x_pred)
+    plt.savefig(os.path.join(output_dir, f"fig_02_{name}.png"))
+    plt.close("all")
+
+    fig, axs = plot_samples_corner(x_true)
+    plt.savefig(os.path.join(output_dir, f"fig_02_true.png"))
+    plt.close("all")
+
+    fig, axs = plot_samples_corner_overlay(x_pred)
+    plt.savefig(os.path.join(output_dir, f"fig_03_{name}.png"))
+    plt.close("all")
+
+
 def evaluate_sampler(name: str, size: int) -> None:
     sampler = make_sampler(name)
 
@@ -152,11 +205,7 @@ def evaluate_sampler(name: str, size: int) -> None:
         size = min(size, 2000)
 
     x = sampler(dist.prob, size=size)
-
-    fig, axs = plot_samples(x)
-    plt.savefig(os.path.join(output_dir, f"fig_samp_{name}.png"))
-    plt.close("all")
-
+    plot_samples(x)
     pprint(sampler.results)
 
 
