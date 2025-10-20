@@ -3,6 +3,7 @@ name = "ment"
 version = "2.0.0"
 requires-python = ">=3.11"
 dependencies = [
+    "matplotlib",
     "numpy",
     "pandas",
     "scipy",
@@ -13,9 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "matplotlib>=3.9,<3.10",
-    "ultraplot>=1.0.5",
-    "psdist>=2.1.4",
+    "scikit-image",
     "xarray",
 ]
 
