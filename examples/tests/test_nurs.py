@@ -69,6 +69,7 @@ if __name__ == "__main__":
     parser.add_argument("--n", type=int, default=10_000)
     parser.add_argument("--chains", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--kind", type=str, default="reg")
     args = parser.parse_args()
 
     path = pathlib.Path(__file__)
@@ -82,14 +83,26 @@ if __name__ == "__main__":
     ndraws = args.n // nchains
     theta_init = torch.randn((nchains, ndim))
 
-    draws, accepts, depths = ment.samp.nurs.sample_nurs(
-        log_prob_func=log_prob_func,
-        theta_init=theta_init,
-        n_draws=ndraws,
-        step_size=0.2,
-        max_doublings=10,
-        threshold=1e-5,
-    )
+    if args.kind == "reg":
+        draws, accepts, depths = ment.samp.nurs.sample_nurs(
+            log_prob_func=log_prob_func,
+            theta_init=theta_init,
+            n_draws=ndraws,
+            step_size=0.2,
+            max_doublings=10,
+            threshold=1e-5,
+        )
+    elif args.kind == "ssa":
+        draws, accepts, depths = ment.samp.nurs.sample_nurs_ssa(
+            log_prob_func=log_prob_func,
+            theta_init=theta_init,
+            n_draws=ndraws,
+            min_step_size=0.2,
+            max_tree_doublings=10,
+            max_step_doublings=8,
+            threshold=1e-5,
+        )
+
     draws = draws.reshape(draws.shape[0] * draws.shape[1], draws.shape[2])
 
     fig, axs = plot_samples(log_prob_func, draws)
