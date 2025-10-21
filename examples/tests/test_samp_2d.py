@@ -18,7 +18,8 @@ plt.style.use("../style.mplstyle")
 # --------------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--n", type=int, default=25_000)
+parser.add_argument("--n", type=int, default=100_000)
+parser.add_argument("--chains", type=int, default=100)
 args = parser.parse_args()
 
 
@@ -88,7 +89,7 @@ def make_sampler(name: str) -> ment.Sampler:
     if name == "grid":
         sampler = ment.GridSampler(limits=grid_limits, shape=grid_shape)
     elif name == "mh":
-        chains = 10
+        chains = args.chains
         start = torch.randn((chains, ndim)) * 0.25
         proposal_cov = torch.eye(ndim) * 0.1
         sampler = ment.MetropolisHastingsSampler(
@@ -98,7 +99,7 @@ def make_sampler(name: str) -> ment.Sampler:
             verbose=1,
         )
     elif name == "hmc":
-        chains = 10
+        chains = args.chains
         step_size = 0.21
         steps_per_samp = 10
         sampler = ment.HamiltonianMonteCarloSampler(
@@ -108,6 +109,15 @@ def make_sampler(name: str) -> ment.Sampler:
             steps_per_samp=steps_per_samp,
             burnin=10,
             verbose=1,
+        )
+    elif name == "nurs":
+        chains = args.chains
+        sampler = ment.NURSSampler(
+            ndim=ndim,
+            start=torch.randn((chains, ndim)),
+            step_size=0.6,
+            max_doublings=10,
+            threshold=1e-5,
         )
     elif name == "flow":
         flow = zuko.flows.NSF(features=ndim, transforms=3, hidden_features=[64] * 3)
@@ -124,8 +134,11 @@ def make_sampler(name: str) -> ment.Sampler:
     elif name == "svgd":
         kernel = ment.samp.svgd.RBFKernel(sigma=0.2)
         sampler = ment.SVGDSampler(
-            ndim=2, kernel=kernel, train_kws=dict(iters=500, lr=0.1), verbose=1
+            ndim=ndim, kernel=kernel, train_kws=dict(iters=500, lr=0.1), verbose=1
         )
+    else:
+        raise ValueError
+
     return sampler
 
 
@@ -144,6 +157,6 @@ def evaluate_sampler(name: str, size: int) -> None:
     pprint(sampler.results)
 
 
-for name in ["grid", "mh", "hmc", "flow", "svgd"]:
+for name in ["grid", "mh", "hmc", "nurs", "flow", "svgd"]:
     print(name.upper())
     evaluate_sampler(name=name, size=args.n)
