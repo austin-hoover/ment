@@ -20,7 +20,7 @@ where $q(x)$ is considered as a prior over $x$ and the integration is over all s
 
 MENT uses the method of Lagrange Multipliers combined with a nonlinear Gauss-Seidel relaxation method to solve the constrained optimization problem. There are two equivalent ways to run the algorithm. The first, called "reverse mode", uses numerical integration; the second, called "forward mode" uses particle sampling. Numerical integration is the best choice in low-dimensional problems, while particle sampling is the better choice in high-dimensional problems.
 
-This repository contains both a forward-mode and reverse-mode implementation of MENT. In forward mode, one must sample particles from an unnormalized distribution function. A grid-based sampler is included for problems of dimension $N <= 4$. Several MCMC algorithms are included for $N >= 4$.
+This repository contains both a forward-mode and reverse-mode implementation of MENT. In forward mode, one must sample particles from an unnormalized distribution function. A grid-based sampler is included for problems of dimension $N <= 4$. Several MCMC algorithms are included for $N >= 4$, including the No-Underrun Sampler (NURS) and Metropolis-Hastings (MH). The samplers are vectorized and can be run with many chains at once.
 
 Each projection is defined as a sum over one or more axes after a transformation of the coordinates. The only requirement on the transformations is that they must be deterministic and one-to-one. The code is set up to take arbitrary transformation functions as inputs. This allows straightforward integration with particle tracking codes.
 
