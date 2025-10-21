@@ -43,9 +43,9 @@ parser.add_argument(
     default="grid",
     choices=["grid", "mh", "nurs", "hmc", "flow"],
 )
-parser.add_argument("--samp-chains", type=int, default=50)
-parser.add_argument("--samp-size", type=int, default=50_000)
-parser.add_argument("--diag-blur", type=float, default=1.0)
+parser.add_argument("--samp-chains", type=int, default=100)
+parser.add_argument("--samp-size", type=int, default=100_000)
+parser.add_argument("--diag-blur", type=float, default=0.5)
 parser.add_argument("--iters", type=int, default=4)
 parser.add_argument("--lr", type=float, default=0.75)
 parser.add_argument("--show", action="store_true")
