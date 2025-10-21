@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
-import scipy.special
 import torch
 import tqdm
 

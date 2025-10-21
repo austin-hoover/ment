@@ -115,7 +115,7 @@ def make_sampler(name: str) -> ment.Sampler:
         sampler = ment.NURSSampler(
             ndim=ndim,
             start=torch.randn((chains, ndim)),
-            step_size=0.2,
+            step_size=0.3,
             max_doublings=10,
             threshold=1e-5,
         )

@@ -21,7 +21,8 @@ plt.style.use("../style.mplstyle")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ndim", type=int, default=6)
-parser.add_argument("--n", type=int, default=50_000)
+parser.add_argument("--n", type=int, default=100_000)
+parser.add_argument("--chains", type=int, default=100)
 args = parser.parse_args()
 
 
@@ -94,9 +95,10 @@ x_true = dist.sample(args.n)
 
 
 def make_sampler(name: str) -> ment.Sampler:
+    chains = args.chains
+
     sampler = None
     if name == "mh":
-        chains = args.n // 1000
         start = torch.randn((chains, ndim)) * 0.25
         proposal_cov = torch.eye(ndim) * 0.1
         sampler = ment.MetropolisHastingsSampler(
@@ -106,16 +108,22 @@ def make_sampler(name: str) -> ment.Sampler:
             verbose=2,
         )
     elif name == "hmc":
-        chains = args.n // 1000
-        step_size = 0.21
-        steps_per_samp = 10
         sampler = ment.HamiltonianMonteCarloSampler(
             ndim=ndim,
             start=torch.randn((chains, ndim)) * 0.25**2,
-            step_size=step_size,
-            steps_per_samp=steps_per_samp,
+            step_size=0.7,
+            steps_per_samp=10,
             burnin=10,
-            verbose=2,
+            verbose=1,
+        )
+    elif name == "nurs":
+        chains = args.chains
+        sampler = ment.NURSSampler(
+            ndim=ndim,
+            start=torch.randn((chains, ndim)),
+            step_size=0.7,
+            max_doublings=10,
+            threshold=1e-5,
         )
     elif name == "flow":
         flow = zuko.flows.NSF(features=ndim, transforms=3, hidden_features=[64] * 3)
@@ -209,6 +217,6 @@ def evaluate_sampler(name: str, size: int) -> None:
     pprint(sampler.results)
 
 
-for name in ["mh", "hmc", "flow", "svgd"]:
+for name in ["mh", "hmc", "nurs", "flow", "svgd"]:
     print(name.upper())
     evaluate_sampler(name=name, size=args.n)
