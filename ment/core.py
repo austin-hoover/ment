@@ -98,6 +98,7 @@ class LagrangeFunction:
         axis: tuple[int] | int,
         coords: list[torch.Tensor] | torch.Tensor,
         values: torch.Tensor,
+        direction: torch.Tensor = None,
     ) -> None:
         """Constructor.
 
@@ -109,6 +110,7 @@ class LagrangeFunction:
         """
         self.ndim = ndim
         self.axis = axis
+        self.direction = direction
 
         if type(self.axis) is int:
             self.axis = (self.axis,)
@@ -121,19 +123,25 @@ class LagrangeFunction:
 
         self.limits = [(c[0], c[-1]) for c in self.coords]
         self.limits = torch.tensor(self.limits)
-
+        
     def set_values(self, values: torch.Tensor) -> None:
         """Set grid values."""
         self.values = values
         self.interp = RegularGridInterpolator(self.coords, self.values)
         return self.values
 
+    def project(self, x: torch.Tensor) -> torch.Tensor:
+        if self.direction is not None:
+            return torch.sum(x * self.direction, axis=1)[:, None]
+        else:
+            return x[:, self.axis]
+
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         """Interpolate grid values at points x.
 
         x is a batch of points, shape (nsamp, ndim).
         """
-        x_proj = x[:, self.axis]
+        x_proj = self.project(x)
         return self.interp(x_proj.T)
 
 
@@ -269,13 +277,14 @@ class MENT:
             self.lagrange_functions.append([])
             for projection in self.projections[index]:
                 values = torch.zeros(projection.shape)
-                values[projection.values > 0.0] = 1.0
+                values[projection.values > 0.0] = 1.0                     
                 lagrange_function = LagrangeFunction(
                     ndim=projection.ndim,
                     axis=projection.axis,
                     coords=projection.coords,
                     values=values,
-                )
+                    direction=getattr(projection, "direction", None),
+                )                
                 self.lagrange_functions[-1].append(lagrange_function)
         return self.lagrange_functions
 
