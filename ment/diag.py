@@ -124,6 +124,7 @@ class Histogram1D(Histogram):
     def __init__(
         self,
         axis: int = 0,
+        direction: torch.Tensor = None,
         edges: torch.Tensor = None,
         coords: torch.Tensor = None,
         values: torch.Tensor = None,
@@ -132,6 +133,7 @@ class Histogram1D(Histogram):
         super().__init__(**kws)
 
         self.axis = axis
+        self.direction = direction
         self.ndim = 1
 
         self.coords = coords
@@ -183,6 +185,8 @@ class Histogram1D(Histogram):
         self.normalize()
 
     def project(self, x: torch.Tensor) -> torch.Tensor:
+        if self.direction is not None:
+            return torch.sum(x * self.direction, axis=1)
         return x[:, self.axis]
 
     def bin(self, x: torch.Tensor) -> torch.Tensor:
