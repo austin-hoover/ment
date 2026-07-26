@@ -86,6 +86,7 @@ Contents
    :caption: User Guide
 
    usage
+   examples
    api
 
 References

@@ -21,6 +21,7 @@ docs = [
     "sphinx",
     "sphinx-rtd-theme",
     "myst-parser",
+    "nbsphinx",
 ]
 
 [build-system]
