@@ -17,6 +17,11 @@ test = [
     "scikit-image",
     "xarray",
 ]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "myst-parser",
+]
 
 [build-system]
 requires = [
