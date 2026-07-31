@@ -7,9 +7,8 @@ import numpy as np
 import torch
 
 from .diag import Histogram
+from .diag import Histogram1D
 from .prior import InfiniteUniformPrior
-from .sim import IdentityTransform
-from .sim import LinearTransform
 from .utils import get_grid_points
 from .utils import wrap_tqdm
 from .utils import unravel
@@ -28,13 +27,16 @@ class RegularGridInterpolator:
         self.values = values
         self.fill_value = torch.tensor(fill_value)
 
+        if type(self.coords) is torch.Tensor:
+            self.coords = [self.coords,]
+
         assert isinstance(self.coords, tuple) or isinstance(self.coords, list)
         assert isinstance(self.values, torch.Tensor)
 
         self.ms = list(self.values.shape)
-        self.n = len(self.coords)
+        self.ndim = len(self.coords)
 
-        assert len(self.ms) == self.n
+        assert len(self.ms) == self.ndim
 
         for i, p in enumerate(self.coords):
             assert isinstance(p, torch.Tensor)
@@ -44,15 +46,21 @@ class RegularGridInterpolator:
         assert self.coords is not None
         assert self.values is not None
 
-        assert len(new_points) == len(self.coords)
-        K = new_points[0].shape[0]
-        for x in new_points:
+        if new_points.ndim == 1:
+            new_points = new_points[:, None]
+
+        new_points_t = new_points.T
+
+        assert new_points_t.shape[0] == self.ndim
+
+        K = new_points_t.shape[1]
+        for x in new_points_t:
             assert x.shape[0] == K
 
         idxs = []
         dists = []
         overalls = []
-        for p, x in zip(self.coords, new_points):
+        for p, x in zip(self.coords, new_points_t):
             idx_right = torch.bucketize(x.contiguous(), p)
             idx_right[idx_right >= p.shape[0]] = p.shape[0] - 1
             idx_left = (idx_right - 1).clamp(0, p.shape[0] - 1)
@@ -68,7 +76,7 @@ class RegularGridInterpolator:
             overalls.append(dist_left + dist_right)
 
         numerator = 0.0
-        for indexer in itertools.product([0, 1], repeat=self.n):
+        for indexer in itertools.product([0, 1], repeat=self.ndim):
             as_s = [idx[onoff] for onoff, idx in zip(indexer, idxs)]
             bs_s = [dist[1 - onoff] for onoff, dist in zip(indexer, dists)]
             numerator += self.values[tuple(as_s)] * torch.prod(torch.stack(bs_s), dim=0)
@@ -77,9 +85,9 @@ class RegularGridInterpolator:
 
         # Handle bounds
         out_of_bounds = torch.zeros(
-            new_points.shape[1], dtype=torch.bool, device=self.values.device
+            new_points_t.shape[1], dtype=torch.bool, device=self.values.device
         )
-        for x, c in zip(new_points, self.coords):
+        for x, c in zip(new_points_t, self.coords):
             out_of_bounds = out_of_bounds | (x < c[0]) | (x > c[-1])
         result[out_of_bounds] = self.fill_value
 
@@ -87,54 +95,24 @@ class RegularGridInterpolator:
 
 
 class LagrangeFunction:
-    """Represents Lagrange multiplier function on regular grid.
-
-    This function can be evaluated at any point by interpolation.
-    """
-
-    def __init__(
-        self,
-        ndim: int,
-        axis: tuple[int] | int,
-        coords: list[torch.Tensor] | torch.Tensor,
-        values: torch.Tensor,
-    ) -> None:
-        """Constructor.
-
-        Args:
-            ndim: Number of dimensions.
-            axis: Defines grid axis. Example: (0, 1).
-            coords: Grid coordinates along each dimension.
-            values: Grid values.
-        """
-        self.ndim = ndim
-        self.axis = axis
-
-        if type(self.axis) is int:
-            self.axis = (self.axis,)
-
-        self.coords = coords
-        if type(self.coords) is torch.Tensor:
-            self.coords = [self.coords]
-
-        self.values = self.set_values(values)
-
-        self.limits = [(c[0], c[-1]) for c in self.coords]
-        self.limits = torch.tensor(self.limits)
+    def __init__(self, projection: Histogram) -> None:
+        self.projection = projection
+        self.values = torch.zeros_like(self.projection.values)
+        self.coords = None
+        if type(projection) is Histogram1D:
+            self.coords = [projection.coords]
+        else:
+            self.coords = projection.coords
+        self.interp = RegularGridInterpolator(self.coords, self.values)
 
     def set_values(self, values: torch.Tensor) -> None:
-        """Set grid values."""
         self.values = values
         self.interp = RegularGridInterpolator(self.coords, self.values)
         return self.values
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
-        """Interpolate grid values at points x.
-
-        x is a batch of points, shape (nsamp, ndim).
-        """
-        x_proj = x[:, self.axis]
-        return self.interp(x_proj.T)
+        x_proj = self.projection.project(x)
+        return self.interp(x_proj)
 
 
 class MENT:
@@ -243,6 +221,7 @@ class MENT:
         self.unnorm_matrix = unnorm_matrix
         if self.unnorm_matrix is None:
             self.unnorm_matrix = torch.eye(self.ndim)
+        self.unnorm_matrix = self.unnorm_matrix.float()
         self.unnorm_matrix_det = torch.linalg.det(self.unnorm_matrix)
         self.norm_matrix = torch.linalg.inv(self.unnorm_matrix)
         self.norm_matrix_det = torch.linalg.det(self.norm_matrix)
@@ -270,12 +249,8 @@ class MENT:
             for projection in self.projections[index]:
                 values = torch.zeros(projection.shape)
                 values[projection.values > 0.0] = 1.0
-                lagrange_function = LagrangeFunction(
-                    ndim=projection.ndim,
-                    axis=projection.axis,
-                    coords=projection.coords,
-                    values=values,
-                )
+                lagrange_function = LagrangeFunction(projection)
+                lagrange_function.set_values(values)
                 self.lagrange_functions[-1].append(lagrange_function)
         return self.lagrange_functions
 

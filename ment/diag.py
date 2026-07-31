@@ -34,12 +34,20 @@ class HistogramND(Histogram):
         self.axis = axis
         self.ndim = len(axis)
 
+        self.values = values
+        if self.values is not None:
+            self.values = self.values.float()
+
         self.coords = coords
         self.edges = edges
         if self.coords is None and self.edges is not None:
             self.coords = [edges_to_coords(e) for e in self.edges]
         if self.edges is None and self.coords is not None:
             self.edges = [coords_to_edges(c) for c in self.coords]
+        for i in range(len(self.coords)):
+            self.coords[i] = self.coords[i].float()
+        for i in range(len(self.edges)):
+            self.edges[i] = self.edges[i].float()
 
         self.bin_sizes = [
             self.coords[i][1] - self.coords[i][0] for i in range(self.ndim)
@@ -127,6 +135,7 @@ class Histogram1D(Histogram):
         edges: torch.Tensor = None,
         coords: torch.Tensor = None,
         values: torch.Tensor = None,
+        direction: torch.Tensor = None,
         **kws,
     ) -> None:
         super().__init__(**kws)
@@ -143,6 +152,10 @@ class Histogram1D(Histogram):
 
         self.bin_size = self.coords[1] - self.coords[0]
         self.bin_volume = self.bin_width = self.bin_size
+
+        self.direction = direction
+        if self.direction is not None:
+            self.direction /= torch.linalg.norm(self.direction)
 
         self.shape = len(self.coords)
         self.values = values
@@ -183,6 +196,8 @@ class Histogram1D(Histogram):
         self.normalize()
 
     def project(self, x: torch.Tensor) -> torch.Tensor:
+        if self.direction is not None:
+            return torch.sum(x * self.direction, axis=1)
         return x[:, self.axis]
 
     def bin(self, x: torch.Tensor) -> torch.Tensor:

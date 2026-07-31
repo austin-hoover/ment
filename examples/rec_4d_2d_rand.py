@@ -31,11 +31,19 @@ parser.add_argument("--nmeas", type=int, default=10)
 parser.add_argument("--nbins", type=int, default=64)
 parser.add_argument("--xmax", type=float, default=3.5)
 parser.add_argument("--mode", type=str, default="forward")
-parser.add_argument("--samp-method", type=str, default="mh")
+parser.add_argument(
+    "--samp-method",
+    type=str,
+    default="grid",
+    choices=["grid", "mh", "nurs", "hmc", "flow"],
+)
+parser.add_argument("--samp-chains", type=int, default=100)
+parser.add_argument("--samp-size", type=int, default=100_000)
 parser.add_argument("--iters", type=int, default=3)
 parser.add_argument("--lr", type=float, default=0.75)
 parser.add_argument("--seed", type=int, default=123)
 parser.add_argument("--show", action="store_true")
+parser.add_argument("--eval-size", type=int, default=100_000)
 args = parser.parse_args()
 
 
@@ -56,7 +64,7 @@ xmax = args.xmax
 seed = args.seed
 
 dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=seed)
-x_true = dist.sample(1_000_000)
+x_true = dist.sample(args.eval_size)
 x_true = x_true.float()
 
 limits = ndim * [(-xmax, xmax)]
@@ -107,20 +115,46 @@ projections = ment.simulate_with_diag_update(
 # Reconstruction model
 # --------------------------------------------------------------------------------------
 
+# Define prior in normalized space
 prior = ment.GaussianPrior(ndim=ndim, scale=1.0)
 
-samp_method = args.samp_method
-
-samp_grid_res = 39
-samp_noise = 0.5
-samp_grid_shape = ndim * [samp_grid_res]
-samp_grid_limits = limits
-
-sampler = ment.GridSampler(
-    limits=samp_grid_limits,
-    shape=samp_grid_shape,
-    noise=samp_noise,
-)
+# Define particle sampler
+if args.samp_method == "grid":
+    samp_grid_shape = ndim * [39]
+    samp_grid_limits = limits
+    sampler = ment.samp.GridSampler(
+        limits=limits,
+        shape=(ndim * [39]),
+        noise=0.5,
+    )
+if args.samp_method == "hmc":
+    chains = args.samp_chains
+    sampler = ment.HamiltonianMonteCarloSampler(
+        ndim=ndim,
+        start=torch.randn((chains, ndim)) * 0.25**2,
+        step_size=0.25,
+        steps_per_samp=10,
+        burnin=10,
+        verbose=1,
+    )
+if args.samp_method == "mh":
+    chains = args.samp_chains
+    sampler = ment.MetropolisHastingsSampler(
+        ndim=ndim,
+        start=torch.randn((chains, ndim)) * 0.25**2,
+        proposal_cov=torch.eye(ndim) * 0.25**2,
+        burnin=10,
+        verbose=1,
+    )
+if args.samp_method == "nurs":
+    chains = args.samp_chains
+    sampler = ment.NURSSampler(
+        ndim=ndim,
+        start=torch.randn((chains, ndim)),
+        step_size=1,
+        max_doublings=10,
+        threshold=1e-5,
+    )
 
 integration_limits = [limits[axis] for axis in range(ndim) if axis not in axis_meas]
 integration_limits = [[integration_limits]] * len(transforms)
