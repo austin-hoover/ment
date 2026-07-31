@@ -34,12 +34,20 @@ class HistogramND(Histogram):
         self.axis = axis
         self.ndim = len(axis)
 
+        self.values = values
+        if self.values is not None:
+            self.values = self.values.float()
+
         self.coords = coords
         self.edges = edges
         if self.coords is None and self.edges is not None:
             self.coords = [edges_to_coords(e) for e in self.edges]
         if self.edges is None and self.coords is not None:
             self.edges = [coords_to_edges(c) for c in self.coords]
+        for i in range(len(self.coords)):
+            self.coords[i] = self.coords[i].float()
+        for i in range(len(self.edges)):
+            self.edges[i] = self.edges[i].float()
 
         self.bin_sizes = [
             self.coords[i][1] - self.coords[i][0] for i in range(self.ndim)

@@ -213,6 +213,7 @@ class MENT:
         self.unnorm_matrix = unnorm_matrix
         if self.unnorm_matrix is None:
             self.unnorm_matrix = torch.eye(self.ndim)
+        self.unnorm_matrix = self.unnorm_matrix.float()
         self.unnorm_matrix_det = torch.linalg.det(self.unnorm_matrix)
         self.norm_matrix = torch.linalg.inv(self.unnorm_matrix)
         self.norm_matrix_det = torch.linalg.det(self.norm_matrix)
