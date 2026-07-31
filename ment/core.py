@@ -27,13 +27,16 @@ class RegularGridInterpolator:
         self.values = values
         self.fill_value = torch.tensor(fill_value)
 
+        if type(self.coords) is torch.Tensor:
+            self.coords = [self.coords,]
+
         assert isinstance(self.coords, tuple) or isinstance(self.coords, list)
         assert isinstance(self.values, torch.Tensor)
 
         self.ms = list(self.values.shape)
-        self.n = len(self.coords)
+        self.ndim = len(self.coords)
 
-        assert len(self.ms) == self.n
+        assert len(self.ms) == self.ndim
 
         for i, p in enumerate(self.coords):
             assert isinstance(p, torch.Tensor)
@@ -42,15 +45,22 @@ class RegularGridInterpolator:
     def __call__(self, new_points: torch.Tensor) -> torch.Tensor:
         assert self.coords is not None
         assert self.values is not None
-        assert len(new_points) == len(self.coords)
-        K = new_points[0].shape[0]
-        for x in new_points:
+
+        if new_points.ndim == 1:
+            new_points = new_points[:, None]
+
+        new_points_t = new_points.T
+
+        assert new_points_t.shape[0] == self.ndim
+
+        K = new_points_t.shape[1]
+        for x in new_points_t:
             assert x.shape[0] == K
 
         idxs = []
         dists = []
         overalls = []
-        for p, x in zip(self.coords, new_points):
+        for p, x in zip(self.coords, new_points_t):
             idx_right = torch.bucketize(x.contiguous(), p)
             idx_right[idx_right >= p.shape[0]] = p.shape[0] - 1
             idx_left = (idx_right - 1).clamp(0, p.shape[0] - 1)
@@ -66,7 +76,7 @@ class RegularGridInterpolator:
             overalls.append(dist_left + dist_right)
 
         numerator = 0.0
-        for indexer in itertools.product([0, 1], repeat=self.n):
+        for indexer in itertools.product([0, 1], repeat=self.ndim):
             as_s = [idx[onoff] for onoff, idx in zip(indexer, idxs)]
             bs_s = [dist[1 - onoff] for onoff, dist in zip(indexer, dists)]
             numerator += self.values[tuple(as_s)] * torch.prod(torch.stack(bs_s), dim=0)
@@ -75,9 +85,9 @@ class RegularGridInterpolator:
 
         # Handle bounds
         out_of_bounds = torch.zeros(
-            new_points.shape[1], dtype=torch.bool, device=self.values.device
+            new_points_t.shape[1], dtype=torch.bool, device=self.values.device
         )
-        for x, c in zip(new_points, self.coords):
+        for x, c in zip(new_points_t, self.coords):
             out_of_bounds = out_of_bounds | (x < c[0]) | (x > c[-1])
         result[out_of_bounds] = self.fill_value
 
@@ -102,9 +112,7 @@ class LagrangeFunction:
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         x_proj = self.projection.project(x)
-        if x_proj.ndim == 1:
-            x_proj = x_proj[:, None]
-        return self.interp(x_proj.T)
+        return self.interp(x_proj)
 
 
 class MENT:
