@@ -102,7 +102,7 @@ def plot_points(
 def plot_points_1d(
     x: np.ndarray, bins: int, limits: tuple[float, float], ax=None, **plot_kws
 ) -> None:
-    values, edges = np.histogram(x, bins=bins, range=limits)
+    values, edges = np.histogram(x, bins=bins, range=limits, density=True)
     return plot_image_1d(values=values, edges=edges, ax=ax, **plot_kws)
 
 
@@ -166,7 +166,9 @@ class CornerGrid:
 
         for i in range(self.ndim):
             plot_points_1d(
-                x[:, i], bins=bins, limits=limits[i], ax=self.axs[i, i], **diag_kws
+                x[:, i], bins=bins, limits=limits[i], ax=self.axs[i, i],
+
+                **diag_kws
             )
 
         self.set_limits(limits)
@@ -391,7 +393,7 @@ class PlotProj2DContour:
         self.plot_kws["proc_kws"].setdefault("scale", "max")
         self.plot_kws["proc_kws"].setdefault("blur", 0.0)
         self.plot_kws.setdefault("levels", np.linspace(0.01, 1.0, 7))
-        self.plot_kws.setdefault("lw", 0.75)
+        self.plot_kws.setdefault("linewidths", 0.75)
 
         self.plot_kws_true.setdefault("colors", "black")
         self.plot_kws_pred.setdefault("colors", "red")
