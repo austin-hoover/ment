@@ -1,6 +1,5 @@
 """Covariance matrix analysis/fitting."""
-import math
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import torch
@@ -9,10 +8,6 @@ from scipy.optimize import OptimizeResult
 from scipy.optimize import Bounds
 
 from .diag import Histogram
-from .diag import Histogram1D
-from .diag import HistogramND
-from .sim import simulate
-from .utils import unravel
 
 
 def normalize_eigvec(v: torch.Tensor) -> torch.Tensor:
@@ -22,17 +17,17 @@ def normalize_eigvec(v: torch.Tensor) -> torch.Tensor:
     """
     ndim = len(v)
     v = torch.clone(torch.as_tensor(v))
-    U = build_poisson_matrix(ndim=ndim, complex=True)
+    U = build_poisson_matrix(ndim=ndim, complex=True).to(device=v.device)
 
-    def norm(v: torch.Tensor) -> torch.Tensor:
+    def norm(vec: torch.Tensor) -> torch.Tensor:
         return torch.linalg.multi_dot([torch.conj(v), U, v])
 
     if torch.imag(norm(v)) > 0:
         v = torch.conj(v)
 
     v *= torch.sqrt(2.0 / torch.abs(norm(v)))
-    assert torch.isclose(torch.imag(norm(v)), -torch.tensor(2.0))
-    assert torch.isclose(torch.real(norm(v)), +torch.tensor(0.0))
+    assert torch.isclose(torch.imag(norm(v)), torch.tensor(-2.0, device=v.device))
+    assert torch.isclose(torch.real(norm(v)), torch.tensor(0.0, device=v.device))
     return v
 
 
@@ -286,7 +281,6 @@ class CovFitterBase:
             result = scipy.optimize.least_squares(
                 self.loss_function,
                 self.params,
-                # bounds=(self.lb, self.ub),
                 **opt_kws,
             )
 
