@@ -107,4 +107,3 @@ if __name__ == "__main__":
 
     fig, axs = plot_samples(log_prob_func, draws)
     plt.savefig(os.path.join(output_dir, "fig_samp.png"))
-    plt.show()

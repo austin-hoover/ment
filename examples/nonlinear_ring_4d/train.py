@@ -30,9 +30,11 @@ parser.add_argument("--turn-step", type=int, default=20)
 parser.add_argument("--diag-xmax", type=float, default=5.5)
 parser.add_argument("--diag-bins", type=int, default=64)
 parser.add_argument("--diag-blur", type=float, default=1.0)
+parser.add_argument("--samp-method", type=str, default="grid")
 parser.add_argument("--samp-xmax", type=float, default=3.0)
 parser.add_argument("--samp-res", type=int, default=35)
 parser.add_argument("--samp-noise", type=float, default=0.0)
+parser.add_argument("--samp-chains", type=int, default=200)
 parser.add_argument("--iters", type=int, default=3)
 parser.add_argument("--lr", type=float, default=0.90)
 parser.add_argument("--plot-nsamp", type=int, default=None)
@@ -126,11 +128,41 @@ projections = ment.simulate_with_diag_update(x_true, transforms, diagnostics, bl
 
 prior = ment.GaussianPrior(ndim=ndim, scale=1.0)
 
-samp_grid_limits = ndim * [(-args.samp_xmax, args.samp_xmax)]
-samp_grid_shape = ndim * [args.samp_res]
-sampler = ment.samp.GridSampler(
-    limits=samp_grid_limits, shape=samp_grid_shape, noise=args.samp_noise
-)
+
+if args.samp_method == "grid":
+    samp_grid_limits = ndim * [(-args.samp_xmax, args.samp_xmax)]
+    samp_grid_shape = ndim * [args.samp_res]
+    sampler = ment.GridSampler(
+        limits=samp_grid_limits, shape=samp_grid_shape, noise=args.samp_noise
+    )
+elif args.samp_method == "hmc":
+    chains = args.samp_chains
+    sampler = ment.HamiltonianMonteCarloSampler(
+        ndim=ndim,
+        start=torch.randn((chains, ndim)) * 0.25**2,
+        step_size=0.25,
+        steps_per_samp=10,
+        burnin=10,
+        verbose=1,
+    )
+elif args.samp_method == "mh":
+    chains = args.samp_chains
+    sampler = ment.MetropolisHastingsSampler(
+        ndim=ndim,
+        start=torch.randn((chains, ndim)) * 0.25**2,
+        proposal_cov=torch.eye(ndim) * 0.25**2,
+        burnin=10,
+        verbose=1,
+    )
+elif args.samp_method == "nurs":
+    chains = args.samp_chains
+    sampler = ment.NURSSampler(
+        ndim=ndim,
+        start=torch.randn((chains, ndim)),
+        step_size=1,
+        max_doublings=10,
+        threshold=1e-5,
+    )
 
 model = ment.MENT(
     ndim=ndim,
