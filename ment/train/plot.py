@@ -166,9 +166,7 @@ class CornerGrid:
 
         for i in range(self.ndim):
             plot_points_1d(
-                x[:, i], bins=bins, limits=limits[i], ax=self.axs[i, i],
-
-                **diag_kws
+                x[:, i], bins=bins, limits=limits[i], ax=self.axs[i, i], **diag_kws
             )
 
         self.set_limits(limits)
