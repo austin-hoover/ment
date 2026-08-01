@@ -28,7 +28,9 @@ class RegularGridInterpolator:
         self.fill_value = torch.tensor(fill_value)
 
         if type(self.coords) is torch.Tensor:
-            self.coords = [self.coords,]
+            self.coords = [
+                self.coords,
+            ]
 
         assert isinstance(self.coords, tuple) or isinstance(self.coords, list)
         assert isinstance(self.values, torch.Tensor)

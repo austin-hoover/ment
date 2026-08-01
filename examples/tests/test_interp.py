@@ -55,7 +55,9 @@ new_grid_res = 500
 new_grid_edges = 2 * [torch.linspace(-xmax, xmax, new_grid_res + 1)]
 new_grid_coords = [ment.utils.edges_to_coords(e) for e in new_grid_edges]
 
-x = torch.stack([c.ravel() for c in torch.meshgrid(*new_grid_coords, indexing="ij")], axis=-1)
+x = torch.stack(
+    [c.ravel() for c in torch.meshgrid(*new_grid_coords, indexing="ij")], axis=-1
+)
 f = interp(x)
 
 new_grid_values = f.reshape((new_grid_res, new_grid_res))
@@ -63,8 +65,12 @@ old_grid_coords = grid_coords
 old_grid_values = grid_values
 
 fig, axs = plt.subplots(figsize=(6, 3), ncols=2, sharex=True, sharey=True)
-axs[0].pcolormesh(old_grid_coords[0], old_grid_coords[1], old_grid_values.T, cmap="Greys", vmin=0.0)
-axs[1].pcolormesh(new_grid_coords[0], new_grid_coords[1], new_grid_values.T, cmap="Greys", vmin=0.0)
+axs[0].pcolormesh(
+    old_grid_coords[0], old_grid_coords[1], old_grid_values.T, cmap="Greys", vmin=0.0
+)
+axs[1].pcolormesh(
+    new_grid_coords[0], new_grid_coords[1], new_grid_values.T, cmap="Greys", vmin=0.0
+)
 for ax in axs:
     ax.set_xlim(-xmax, xmax)
     ax.set_ylim(-xmax, xmax)
