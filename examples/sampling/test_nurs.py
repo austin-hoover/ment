@@ -83,25 +83,13 @@ if __name__ == "__main__":
     ndraws = args.n // nchains
     theta_init = torch.randn((nchains, ndim))
 
-    if args.kind == "reg":
-        draws, accepts, depths = ment.samp.nurs.sample_nurs(
-            log_prob_func=log_prob_func,
-            theta_init=theta_init,
-            n_draws=ndraws,
-            step_size=0.2,
-            max_doublings=10,
-            threshold=1e-5,
-        )
-    elif args.kind == "ssa":
-        draws, accepts, depths = ment.samp.nurs.sample_nurs_ssa(
-            log_prob_func=log_prob_func,
-            theta_init=theta_init,
-            n_draws=ndraws,
-            min_step_size=0.2,
-            max_tree_doublings=10,
-            max_step_doublings=8,
-            threshold=1e-5,
-        )
+    draws = ment.samp.nurs.sample_nurs(
+        log_prob_func,
+        init_states=theta_init,
+        num_samples=ndraws,
+        step_size=0.2,
+        max_doublings=10,
+    )
 
     draws = draws.reshape(draws.shape[0] * draws.shape[1], draws.shape[2])
 
