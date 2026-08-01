@@ -83,12 +83,13 @@ if __name__ == "__main__":
     ndraws = args.n // nchains
     theta_init = torch.randn((nchains, ndim))
 
-    draws = ment.samp.nurs.sample_nurs(
+    draws, _, _ = ment.samp.nurs.sample_nurs(
         log_prob_func,
-        init_states=theta_init,
-        num_samples=ndraws,
+        theta_init,
+        ndraws,
         step_size=0.2,
         max_doublings=10,
+        threshold=1e-5,
     )
 
     draws = draws.reshape(draws.shape[0] * draws.shape[1], draws.shape[2])

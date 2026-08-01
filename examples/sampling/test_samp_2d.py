@@ -157,6 +157,13 @@ def evaluate_sampler(name: str, size: int) -> None:
     pprint(sampler.results)
 
 
-for name in ["grid", "mh", "hmc", "nurs", "flow", "svgd"]:
+for name in [
+    "grid",
+    "mh",
+    # "hmc",
+    "nurs",
+    # "flow",
+    # "svgd"
+]:
     print(name.upper())
     evaluate_sampler(name=name, size=args.n)

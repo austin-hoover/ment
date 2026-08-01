@@ -1,165 +1,153 @@
-"""No-Underrun Sampler (NURS).
-
-https://github.com/bob-carpenter/no-underrun-sampler
-"""
 import math
-from collections.abc import Callable
+from typing import Callable
 
 import torch
-from tqdm import tqdm
-from tqdm import trange
+import tqdm
 
 from .core import Sampler
 
 
+@torch.no_grad()
 def sample_nurs(
-    log_prob_fn: Callable[[torch.Tensor], torch.Tensor],
-    init_states: torch.Tensor,
-    num_samples: int,
-    step_size: float = 0.1,
-    max_doublings: int = 10,
-) -> torch.Tensor:
-    """
-    No-Underrun Sampler (NURS).
+    log_prob_func: Callable[[torch.Tensor], torch.Tensor],
+    theta_init: torch.Tensor,
+    n_draws: int,
+    step_size: float,
+    max_doublings: int,
+    threshold: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
-    [From Google Gemini]
+    n_chains, dim = theta_init.shape
+    device = theta_init.device
+    dtype = theta_init.dtype
 
-    Args:
-        log_prob_fn: Callable returning log probabilities for a batch of states.
-            Input shape: (batch_size, d), Output shape: (batch_size,)
-        init_states: Tensor of shape (n, d) representing starting states for n chains.
-        num_samples: Integer, the number of MCMC samples to draw per chain.
-        step_size: Float, the distance between evaluated points.
-        max_doublings: Integer, the max number of times the orbit can double.
+    log_step_size = math.log(step_size)
+    log_threshold = math.log(threshold)
 
-    Returns:
-        samples: Tensor of shape (num_samples, n, d) containing the MCMC chains.
-    """
-    device = init_states.device
-    n, d = init_states.shape
+    max_points = 2**max_doublings
 
-    # Pre-allocate tensor to store all samples across all chains
-    samples = torch.zeros((num_samples, n, d), device=device)
+    draws = torch.empty((n_draws, n_chains, dim), device=device, dtype=dtype)
+    accepts = torch.zeros((n_draws, n_chains), device=device, dtype=torch.long)
+    depths = torch.zeros((n_draws, n_chains), device=device, dtype=torch.long)
 
-    current_states = init_states.clone()
-    current_log_probs = log_prob_fn(current_states)
+    current_theta = theta_init.clone()
+    draws[0] = current_theta
 
-    for i in trange(num_samples):
-        # 1. Sample uniform directions on the unit sphere for all n chains
-        directions = torch.randn(n, d, device=device)
-        directions = directions / torch.norm(directions, dim=1, keepdim=True)
+    for i in tqdm.tqdm(range(1, n_draws), initial=1, total=n_draws):
+        # 1. Random Direction
+        u = torch.randn((n_chains, dim), device=device, dtype=dtype)
+        rho = u / torch.linalg.norm(u, dim=1, keepdim=True)
 
-        # 2. Slice Sampling Setup: Draw n log-uniform height variables
-        log_y = current_log_probs - torch.empty(n, device=device).exponential_()
+        # 2. Metropolis Shift Step
+        lp_curr = log_prob_func(current_theta)
+        s = (torch.rand(n_chains, device=device, dtype=dtype) - 0.5) * step_size
+        theta_star = current_theta + s[:, None] * rho
+        lp_star = log_prob_func(theta_star)
 
-        # 3. Orbit Initialization: Random offsets for all chains
-        shifts = torch.rand(n, device=device) * step_size
-        left_steps = -shifts
-        right_steps = step_size - shifts
+        accept_prob = torch.clip(torch.exp(lp_star - lp_curr), max=1.0)
+        accept = torch.rand(n_chains, device=device, dtype=dtype) < accept_prob
 
-        # State tracking for reservoir sampling
-        proposed_states = current_states.clone()
-        proposed_log_probs = current_log_probs.clone()
+        current_theta = torch.where(accept[:, None], theta_star, current_theta)
+        lp_curr = torch.where(accept, lp_star, lp_curr)
+        accepts[i] = accept.long()
 
-        # Valid state counts per chain (the initial state is always valid)
-        valid_counts = torch.ones(n, dtype=torch.long, device=device)
+        # 3. Batch Lattice Expansion & Parallel Density Evaluation
+        # Pre-generate potential step indices [-max_points, ..., max_points]
+        step_offsets = torch.arange(
+            -max_points, max_points + 1, device=device, dtype=dtype
+        )
 
-        # Mask tracking which chains are still actively expanding
-        active_mask = torch.ones(n, dtype=torch.bool, device=device)
+        # Batch evaluation across all chains and potential points: (n_chains, 2*max_points + 1, dim)
+        candidate_points = (
+            current_theta[:, None, :]
+            + (step_offsets[None, :, None] * step_size) * rho[:, None, :]
+        )
 
-        # 4. Batched Constant Velocity Orbit Expansion
-        for k in range(max_doublings):
+        # Reshape to batch evaluate through user's target function
+        flat_candidates = candidate_points.view(-1, dim)
+        flat_logp = log_prob_func(flat_candidates)
+        logp_grid = flat_logp.view(n_chains, 2 * max_points + 1)
+
+        # Center index corresponds to index `max_points` (offset 0)
+        center_idx = max_points
+
+        # Track active tree bounds for each chain
+        left_idx = torch.full((n_chains,), center_idx, device=device, dtype=torch.long)
+        right_idx = torch.full((n_chains,), center_idx, device=device, dtype=torch.long)
+
+        # Current combined tree state
+        tree_logp_sum = logp_grid[torch.arange(n_chains), center_idx]
+        selected_theta = current_theta.clone()
+
+        chain_stopped = torch.zeros(n_chains, device=device, dtype=torch.bool)
+        directions = torch.randint(0, 2, size=(n_chains, max_doublings), device=device)
+
+        final_depths = torch.zeros(n_chains, device=device, dtype=torch.long)
+
+        for depth in range(max_doublings):
+            active_mask = ~chain_stopped
             if not active_mask.any():
-                break  # All chains have met the stopping criterion
+                break
 
-            # Randomly decide expansion direction for each chain
-            expand_right = torch.rand(n, device=device) > 0.5
-            num_new = 2**k
+            dir_d = directions[:, depth]  # 1 = right, 0 = left
+            tree_size = 2**depth
 
-            # Generate new step distances
-            step_increments = step_size * torch.arange(
-                1, num_new + 1, device=device
-            ).unsqueeze(0)
-            new_steps_right = right_steps.unsqueeze(1) + step_increments
-            new_steps_left = left_steps.unsqueeze(1) - step_increments
+            # Calculate prospective new sub-tree indices
+            new_left = torch.where(dir_d == 1, right_idx + 1, left_idx - tree_size)
+            new_right = torch.where(dir_d == 1, right_idx + tree_size, left_idx - 1)
 
-            # Apply expansion direction to steps
-            new_steps = torch.where(
-                expand_right.unsqueeze(1), new_steps_right, new_steps_left
+            # Compute logp sums for proposed extension
+            # Gather sub-tree log-probabilities
+            idx_range = torch.arange(tree_size, device=device)
+            ext_indices = new_left[:, None] + idx_range[None, :]
+            ext_logp = torch.gather(logp_grid, 1, ext_indices)
+            ext_logp_sum = torch.logsumexp(ext_logp, dim=1)
+
+            # Categorical tree combination / update state
+            comb_logp = torch.logsumexp(
+                torch.stack([tree_logp_sum, ext_logp_sum], dim=0), dim=0
+            )
+            prob_ext = torch.exp(ext_logp_sum - comb_logp)
+
+            # Select new state conditionally
+            choose_ext = torch.rand(n_chains, device=device) < prob_ext
+
+            # Pick state from extension subtree
+            ext_probs = torch.softmax(ext_logp, dim=1)
+            ext_selected_offset = torch.multinomial(ext_probs, 1).squeeze(-1)
+            ext_selected_idx = new_left + ext_selected_offset
+
+            # Update selected position for active chains
+            ext_theta = (
+                current_theta
+                + (ext_selected_idx - center_idx)[:, None] * step_size * rho
+            )
+            update_mask = active_mask & choose_ext
+            selected_theta = torch.where(
+                update_mask[:, None], ext_theta, selected_theta
             )
 
-            # 5. Parallelized Log-Prob Evaluations
-            # Calculate proposals for all n chains and their new points simultaneously
-            proposals = current_states.unsqueeze(1) + new_steps.unsqueeze(
-                2
-            ) * directions.unsqueeze(1)
+            # Update overall tree boundaries & logsumexp
+            tree_logp_sum = torch.where(active_mask, comb_logp, tree_logp_sum)
+            left_idx = torch.where(active_mask & (dir_d == 0), new_left, left_idx)
+            right_idx = torch.where(active_mask & (dir_d == 1), new_right, right_idx)
 
-            # Flatten to evaluate all (n * num_new) states at once
-            proposals_flat = proposals.view(n * num_new, d)
-            log_probs_flat = log_prob_fn(proposals_flat)
-            log_probs = log_probs_flat.view(n, num_new)
+            # Stopping Condition Check: max(lp_left, lp_right) <= log_threshold + log_step + tree_logp
+            lp_l = logp_grid[torch.arange(n_chains), left_idx]
+            lp_r = logp_grid[torch.arange(n_chains), right_idx]
+            log_eps = log_threshold + log_step_size + tree_logp_sum
 
-            # Filter valid states that are in the slice AND belong to active chains
-            in_slice = (log_probs > log_y.unsqueeze(1)) & active_mask.unsqueeze(1)
-
-            # 6. Reservoir Sampling (replaces jagged array filtering)
-            new_valid_counts = in_slice.sum(dim=1)
-            total_counts = valid_counts + new_valid_counts
-
-            # To simulate uniform sampling among new valid states, assign random scores
-            # and pick the highest score. Invalid states get -1.0.
-            rand_scores = torch.where(
-                in_slice, torch.rand(n, num_new, device=device), -1.0
-            )
-            chosen_idx = rand_scores.argmax(dim=1)
-
-            new_proposed_states = proposals[torch.arange(n, device=device), chosen_idx]
-            new_proposed_log_probs = log_probs[
-                torch.arange(n, device=device), chosen_idx
-            ]
-
-            # Determine if we should accept the newly drawn state based on reservoir weights
-            accept_prob = new_valid_counts.float() / total_counts.float()
-            accept_mask = (torch.rand(n, device=device) < accept_prob) & (
-                new_valid_counts > 0
+            stop = (lp_l < log_eps) & (lp_r < log_eps)
+            chain_stopped = chain_stopped | stop
+            final_depths = torch.where(
+                active_mask, torch.tensor(depth, device=device), final_depths
             )
 
-            proposed_states = torch.where(
-                accept_mask.unsqueeze(1), new_proposed_states, proposed_states
-            )
-            proposed_log_probs = torch.where(
-                accept_mask, new_proposed_log_probs, proposed_log_probs
-            )
-            valid_counts = total_counts
+        current_theta = selected_theta
+        draws[i] = current_theta
+        depths[i] = final_depths
 
-            # Update left/right boundaries strictly for active chains
-            right_steps = torch.where(
-                active_mask & expand_right, new_steps[:, -1], right_steps
-            )
-            left_steps = torch.where(
-                active_mask & ~expand_right, new_steps[:, -1], left_steps
-            )
-
-            # 7. No-Underrun Condition (Stopping Criterion)
-            # Check the endpoints of the currently expanded line segment
-            end_pts = torch.stack([left_steps, right_steps], dim=1)
-            end_proposals = current_states.unsqueeze(1) + end_pts.unsqueeze(
-                2
-            ) * directions.unsqueeze(1)
-            end_log_probs = log_prob_fn(end_proposals.view(n * 2, d)).view(n, 2)
-
-            # An orbit underruns if both endpoints fall outside the slice threshold
-            underrun = (end_log_probs < log_y.unsqueeze(1)).all(dim=1)
-
-            # Deactivate chains that have underrun
-            active_mask = active_mask & ~underrun
-
-        # 8. Commit Updates
-        current_states = proposed_states
-        current_log_probs = proposed_log_probs
-        samples[i] = current_states
-
-    return samples
+    return draws, accepts, depths
 
 
 class NURSSampler(Sampler):
@@ -179,17 +167,18 @@ class NURSSampler(Sampler):
         self.threshold = threshold
 
     def _sample(self, prob_func: Callable, size: int) -> torch.Tensor:
+        size_per_chain = int(math.ceil(size / float(self.chains)))
+
         def log_prob_func(x: torch.Tensor) -> torch.Tensor:
             return torch.log(prob_func(x) + 1e-12)
 
-        x = sample_nurs(
-            log_prob_func,
-            init_states=self.start,
-            num_samples=int(math.ceil(size / float(self.chains))),
+        x, _, _ = sample_nurs(
+            log_prob_func=log_prob_func,
+            theta_init=self.start,
+            n_draws=size_per_chain,
             step_size=self.step_size,
             max_doublings=self.max_doublings,
+            threshold=self.threshold,
         )
-
         x = x.reshape(x.shape[0] * x.shape[1], x.shape[2])
-        x = x[:size]
-        return x
+        return x[:size]
