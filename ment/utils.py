@@ -25,7 +25,7 @@ def coords_to_edges(coords: torch.Tensor) -> torch.Tensor:
     delta = coords[1] - coords[0]
     edges = torch.zeros(len(coords) + 1)
     edges[:-1] = coords - 0.5 * delta
-    edges[-1] = coords[-1] + delta
+    edges[-1] = coords[-1] + 0.5 * delta
     return edges
 
 
