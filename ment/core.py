@@ -554,6 +554,7 @@ class MENT:
     def save(self, path: str) -> None:
         """Save model to pickled file."""
         state = {
+            "lagrange_functions": self.lagrange_functions,
             "transforms": self.transforms,
             "diagnostics": self.diagnostics,
             "projections": self.projections,
@@ -575,6 +576,7 @@ class MENT:
 
         state = pickle.load(file)
 
+        self.lagrange_functions = state["lagrange_functions"]
         self.transforms = state["transforms"]
         self.diagnostics = state["diagnostics"]
         self.projections = state["projections"]
@@ -583,5 +585,5 @@ class MENT:
         self.prior = state["prior"]
         self.sampler = state["sampler"]
         self.set_unnorm_matrix(state["unnorm_matrix"])
-        self.init_lagrange_functions()
+
         file.close()
