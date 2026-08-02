@@ -39,6 +39,7 @@ parser.add_argument("--iters", type=int, default=3)
 parser.add_argument("--lr", type=float, default=0.75)
 parser.add_argument("--seed", type=int, default=123)
 parser.add_argument("--show", action="store_true")
+parser.add_argument("--eval-size", type=int, default=100_000)
 args = parser.parse_args()
 
 
@@ -59,7 +60,7 @@ xmax = args.xmax
 seed = args.seed
 
 dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=seed)
-x_true = dist.sample(1_000_000)
+x_true = dist.sample(args.eval_size)
 x_true = x_true.float()
 
 limits = args.ndim * [(-xmax, xmax)]
@@ -139,7 +140,7 @@ elif args.samp_method == "mh":
         ndim=ndim,
         start=torch.randn((chains, ndim)) * 0.25**2,
         proposal_cov=torch.eye(ndim) * 0.25**2,
-        burnin=10,
+        burnin=1,
         verbose=1,
     )
 elif args.samp_method == "nurs":
