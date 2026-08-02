@@ -152,13 +152,6 @@ if args.samp_method == "nurs":
         threshold=1e-5,
     )
 
-
-elif samp_method == "mh":
-    samp_burnin = 10
-    samp_chains = args.samp_chains
-    samp_prop_cov = torch.eye(ndim) * (0.5**2)
-    samp_start = torch.randn(samp_chains, ndim) * 0.5
-
     sampler = ment.MetropolisHastingsSampler(
         ndim=ndim,
         start=samp_start,
