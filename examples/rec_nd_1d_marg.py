@@ -33,10 +33,13 @@ parser.add_argument(
     "--mode", type=str, default="reverse", choices=["reverse", "forward"]
 )
 parser.add_argument("--samp-method", type=str, default="mh")
+parser.add_argument("--samp-chains", type=int, default=100)
+parser.add_argument("--samp-size", type=int, default=100_000)
 parser.add_argument("--iters", type=int, default=3)
 parser.add_argument("--lr", type=float, default=0.75)
 parser.add_argument("--seed", type=int, default=123)
 parser.add_argument("--show", action="store_true")
+parser.add_argument("--eval-size", type=int, default=100_000)
 args = parser.parse_args()
 
 
@@ -57,7 +60,7 @@ xmax = args.xmax
 seed = args.seed
 
 dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=seed)
-x_true = dist.sample(1_000_000)
+x_true = dist.sample(args.eval_size)
 x_true = x_true.float()
 
 limits = args.ndim * [(-xmax, xmax)]
@@ -109,39 +112,46 @@ projections = ment.simulate_with_diag_update(
 # Reconstruction model
 # --------------------------------------------------------------------------------------
 
+# Define prior
 prior = ment.GaussianPrior(ndim=ndim, scale=1.0)
 
-samp_method = args.samp_method
-
-if samp_method == "grid":
-    samp_grid_res = 32
-    samp_noise = 0.5
-    samp_grid_shape = ndim * [samp_grid_res]
+# Define particle sampler
+if args.samp_method == "grid":
+    samp_grid_shape = ndim * [32]
     samp_grid_limits = limits
-
     sampler = ment.samp.GridSampler(
-        grid_limits=samp_grid_limits,
-        grid_shape=samp_grid_shape,
-        noise=samp_noise,
+        limits=samp_grid_limits,
+        shape=samp_grid_shape,
+        noise=0.5,
     )
-
-elif samp_method == "mh":
-    samp_burnin = 500
-    samp_chains = 1000
-    samp_prop_cov = torch.eye(ndim) * (0.5**2)
-    samp_start = torch.randn(samp_chains, ndim) * 0.5
-
+elif args.samp_method == "hmc":
+    chains = args.samp_chains
+    sampler = ment.HamiltonianMonteCarloSampler(
+        ndim=ndim,
+        start=torch.randn((chains, ndim)) * 0.25**2,
+        step_size=0.25,
+        steps_per_samp=10,
+        burnin=10,
+        verbose=1,
+    )
+elif args.samp_method == "mh":
+    chains = args.samp_chains
     sampler = ment.MetropolisHastingsSampler(
         ndim=ndim,
-        start=samp_start,
-        proposal_cov=samp_prop_cov,
-        burnin=samp_burnin,
-        shuffle=True,
+        start=torch.randn((chains, ndim)) * 0.25**2,
+        proposal_cov=torch.eye(ndim) * 0.25**2,
+        burnin=1,
         verbose=1,
-        noise=0.10,  # slight smoothing
-        noise_type="gaussian",
     )
-
+elif args.samp_method == "nurs":
+    chains = args.samp_chains
+    sampler = ment.NURSSampler(
+        ndim=ndim,
+        start=torch.randn((chains, ndim)),
+        step_size=1,
+        max_doublings=10,
+        threshold=1e-5,
+    )
 else:
     raise ValueError
 
@@ -152,7 +162,7 @@ model = ment.MENT(
     projections=projections,
     prior=prior,
     sampler=sampler,
-    nsamp=100_000,
+    nsamp=args.samp_size,
     mode="forward",
     verbose=True,
 )
