@@ -69,7 +69,8 @@ if __name__ == "__main__":
     parser.add_argument("--n", type=int, default=10_000)
     parser.add_argument("--chains", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--kind", type=str, default="reg")
+    parser.add_argument("--max-doublings", type=int, default=10)
+    parser.add_argument("--step-size", type=float, default=0.2)
     args = parser.parse_args()
 
     path = pathlib.Path(__file__)
@@ -87,8 +88,8 @@ if __name__ == "__main__":
         log_prob_func,
         theta_init,
         ndraws,
-        step_size=0.2,
-        max_doublings=10,
+        step_size=args.step_size,
+        max_doublings=args.max_doublings,
         threshold=1e-5,
     )
 
