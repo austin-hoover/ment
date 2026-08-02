@@ -123,7 +123,7 @@ if args.samp_method == "grid":
         shape=samp_grid_shape,
         noise=0.5,
     )
-if args.samp_method == "hmc":
+elif args.samp_method == "hmc":
     chains = args.samp_chains
     sampler = ment.HamiltonianMonteCarloSampler(
         ndim=ndim,
@@ -133,7 +133,7 @@ if args.samp_method == "hmc":
         burnin=10,
         verbose=1,
     )
-if args.samp_method == "mh":
+elif args.samp_method == "mh":
     chains = args.samp_chains
     sampler = ment.MetropolisHastingsSampler(
         ndim=ndim,
@@ -142,7 +142,7 @@ if args.samp_method == "mh":
         burnin=10,
         verbose=1,
     )
-if args.samp_method == "nurs":
+elif args.samp_method == "nurs":
     chains = args.samp_chains
     sampler = ment.NURSSampler(
         ndim=ndim,
@@ -151,18 +151,6 @@ if args.samp_method == "nurs":
         max_doublings=10,
         threshold=1e-5,
     )
-
-    sampler = ment.MetropolisHastingsSampler(
-        ndim=ndim,
-        start=samp_start,
-        proposal_cov=samp_prop_cov,
-        burnin=samp_burnin,
-        shuffle=True,
-        verbose=1,
-        noise=0.10,  # slight smoothing
-        noise_type="gaussian",
-    )
-
 else:
     raise ValueError
 
