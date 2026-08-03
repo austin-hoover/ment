@@ -69,9 +69,9 @@ def simulate(
 ) -> list[list[Histogram]]:
     diagnostics_copy = copy_histograms(diagnostics)
     for index, transform in enumerate(transforms):
-        u = transform(x)
+        x_out = transform(x)
         for diagnostic in diagnostics_copy[index]:
-            diagnostic(u)
+            diagnostic(x_out)
     return diagnostics_copy
 
 
