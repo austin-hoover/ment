@@ -332,7 +332,6 @@ class CholeskyCovFitter(CovFitterBase):
 
         self.idx_diag = (np.arange(self.ndim), np.arange(self.ndim))
         self.idx_offdiag = np.tril_indices(self.ndim, k=-1)
-        print(self.idx_offdiag)
 
         self.ub = np.full(self.nparam, bound)
         self.lb = -self.ub
