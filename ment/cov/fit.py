@@ -20,7 +20,6 @@ class CovFitterBase:
         nsamp: int,
         verbose: bool = 2,
         loss_scale: float = 1.0,
-        emittance_penalty: float = 0.0,
     ) -> None:
 
         self.ndim = ndim
@@ -32,7 +31,6 @@ class CovFitterBase:
         self.ub = None
 
         self.loss_scale = loss_scale
-        self.emittance_penalty = emittance_penalty
 
         self.transforms = transforms
         self.projections = projections
@@ -54,7 +52,8 @@ class CovFitterBase:
         raise NotImplementedError
 
     def sample(self, size: int = None) -> torch.Tensor:
-        size = size or self.nsamp
+        if size is None:
+            size = self.nsamp
         cov_matrix = self.build_cov().float()
         L = torch.linalg.cholesky(cov_matrix)
         x = torch.randn((size, self.ndim))
@@ -216,13 +215,13 @@ class CholeskyCovFitter(CovFitterBase):
         self.lb[: self.ndim] = 1.00e-15
 
         self.params = np.zeros(self.nparam)
-        self.params[self.ndim :] = 1.0
+        self.params[: self.ndim] = 1.0
         self.set_params(self.params)
 
-    def build_cov(self) -> np.array:
+    def build_cov(self) -> torch.Tensor:
         self.L[self.idx_diag] = array_to_tensor(self.params[: self.ndim])
         self.L[self.idx_offdiag] = array_to_tensor(self.params[self.ndim :])
-        return np.matmul(self.L, self.L.T)
+        return self.L @ self.L.T
 
     def set_cov(self, cov_matrix: torch.Tensor) -> None:
         L = torch.linalg.cholesky(cov_matrix)
@@ -262,15 +261,15 @@ class LinearCovFitter(CovFitterBase):
         matrix = torch.from_numpy(matrix).float()
         return matrix
 
-    def sample(self, size: int = None) -> np.ndarray:
-        size = size or self.nsamp
+    def sample(self, size: int = None) -> torch.Tensor:
+        if size is None:
+            size = self.nsamp
         matrix = self.get_unnorm_matrix()
         x = torch.randn((size, self.ndim))
         return x @ matrix.T
 
     def build_cov(self) -> torch.Tensor:
-        x = self.sample()
-        return torch.cov(x.T)
+        return self.matrix @ self.matrix.T
 
     def set_cov(self, cov_matrix: torch.Tensor) -> None:
         self.set_params(torch.ravel(torch.linalg.cholesky(cov_matrix)))
