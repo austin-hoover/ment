@@ -59,10 +59,11 @@ print(cov_matrix)
 transforms = []
 for angle in torch.linspace(0.0, np.pi, args.nmeas + 1)[:-1]:
     M = ment.utils.rotation_matrix(angle)
-    transform = ment.sim.LinearTransform(M)
+    transform = ment.LinearTransform(M)
     transforms.append(transform)
 
 bin_edges = torch.linspace(-args.xmax, args.xmax, args.bins)
+
 diagnostics = []
 for transform in transforms:
     diagnostic = ment.Histogram1D(axis=0, edges=bin_edges)
@@ -96,18 +97,18 @@ print(fit_results)
 # Plot results
 x = fitter.sample(100_000)
 projections_pred = ment.unravel(ment.simulate(x, fitter.transforms, fitter.diagnostics))
-projections_meas = ment.unravel(fitter.projections)
-
-fig, axs = plt.subplots(
-    ncols=args.nmeas,
-    figsize=(11.0, 1.0),
-    sharey=True,
-    sharex=True,
-)
-for i, ax in enumerate(axs):
-    values_pred = projections_pred[i].values
-    values_meas = projections_meas[i].values
-    ax.plot(values_pred / values_meas.max(), color="lightgray")
-    ax.plot(values_meas / values_meas.max(), color="black", lw=0.0, marker=".", ms=2.0)
-plt.savefig(os.path.join(output_dir, "fig_results.png"), dpi=300)
-plt.close()
+# projections_meas = ment.unravel(fitter.projections)
+#
+# fig, axs = plt.subplots(
+#     ncols=args.nmeas,
+#     figsize=(11.0, 1.0),
+#     sharey=True,
+#     sharex=True,
+# )
+# for i, ax in enumerate(axs):
+#     values_pred = projections_pred[i].values
+#     values_meas = projections_meas[i].values
+#     ax.plot(values_pred / values_meas.max(), color="lightgray")
+#     ax.plot(values_meas / values_meas.max(), color="black", lw=0.0, marker=".", ms=2.0)
+# plt.savefig(os.path.join(output_dir, "fig_results.png"), dpi=300)
+# plt.close()

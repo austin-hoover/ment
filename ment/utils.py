@@ -21,6 +21,10 @@ def unravel(iterable):
     return list(itertools.chain.from_iterable(iterable))
 
 
+def array_to_tensor(x: np.ndarray) -> torch.Tensor:
+    return torch.from_numpy(x).float()
+
+
 def coords_to_edges(coords: torch.Tensor) -> torch.Tensor:
     delta = coords[1] - coords[0]
     edges = torch.zeros(len(coords) + 1)

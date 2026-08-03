@@ -1,4 +1,4 @@
-"""Covariance matrix analysis/fitting."""
+"""Covariance matrix fitting."""
 from collections.abc import Callable
 
 import numpy as np
@@ -7,127 +7,11 @@ import scipy.optimize
 from scipy.optimize import OptimizeResult
 from scipy.optimize import Bounds
 
-from .diag import Histogram
-
-
-def normalize_eigvec(v: torch.Tensor) -> torch.Tensor:
-    """Normalize eigenvectors according to Lebedev-Bogacz convention.
-
-    conj(v)^T U v = 2i
-    """
-    ndim = len(v)
-    v = torch.clone(torch.as_tensor(v))
-    U = build_poisson_matrix(ndim=ndim, complex=True).to(device=v.device)
-
-    def norm(vec: torch.Tensor) -> torch.Tensor:
-        return torch.linalg.multi_dot([torch.conj(v), U, v])
-
-    if torch.imag(norm(v)) > 0:
-        v = torch.conj(v)
-
-    v *= torch.sqrt(2.0 / torch.abs(norm(v)))
-    assert torch.isclose(torch.imag(norm(v)), torch.tensor(-2.0, device=v.device))
-    assert torch.isclose(torch.real(norm(v)), torch.tensor(0.0, device=v.device))
-    return v
-
-
-def build_poisson_matrix(ndim: int, complex: bool = False) -> torch.Tensor:
-    """Return 4 x 4 Poisson matrix (assumes x-x' ordering)."""
-    U = torch.zeros((ndim, ndim))
-    for i in range(0, ndim, 2):
-        U[i, i + 1] = +1.0
-        U[i + 1, i] = -1.0
-    if complex:
-        U = torch.complex(U, torch.zeros_like(U))
-    return U
-
-
-def build_norm_matrix_from_eigvecs(*eigvecs: list[torch.Tensor]) -> torch.Tensor:
-    """Return normalization matrix V^-1 from eigenvectors."""
-    ndim = eigvecs[0].shape[0]
-    V = torch.zeros((ndim, ndim))
-    for i, v in enumerate(eigvecs):
-        V[:, i * 2 + 0] = +v.real
-        V[:, i * 2 + 1] = -v.imag
-    return torch.linalg.inv(V)
-
-
-def build_scale_matrix(emittances: torch.Tensor) -> torch.Tensor:
-    """Return 4 x 4 emittance scaling matrix."""
-    diagonal = torch.clone(torch.as_tensor(emittances))
-    diagonal = torch.sqrt(torch.repeat_interleave(diagonal, 2))
-    return torch.diag(diagonal)
-
-
-def build_norm_matrix_from_cov(
-    cov_matrix: torch.Tensor, scale: bool = False
-) -> torch.Tensor:
-    """Return 4 x 4 symplectic normalization matrix from covariance matrix."""
-    S = cov_matrix
-    U = build_poisson_matrix(cov_matrix.shape[0])
-    U = U.to(S.device)
-    SU = torch.matmul(S, U)
-
-    eigvals, eigvecs = torch.linalg.eig(SU)
-
-    idx = eigvals.imag > 0.0
-    eigvecs = eigvecs[:, idx]
-
-    eigvecs = eigvecs.T
-    for i, v in enumerate(eigvecs):
-        eigvecs[i, :] = normalize_eigvec(v)
-
-    V_inv = build_norm_matrix_from_eigvecs(*eigvecs)
-    if scale:
-        A = torch.linalg.multi_dot([V_inv, S, V_inv.T])
-        A = torch.diag(torch.diag(A))
-        A = torch.sqrt(A)
-        A_inv = torch.linalg.inv(A)
-        V_inv = torch.matmul(A_inv, V_inv)
-    return V_inv
-
-
-def cov_to_corr(cov_matrix: torch.Tensor) -> torch.Tensor:
-    """Compute correlation matrix from covariance matrix."""
-    S = cov_matrix
-    D = torch.sqrt(torch.diag(torch.diag(S)))
-    Dinv = torch.linalg.inv(D)
-    return torch.linalg.multi_dot([Dinv, S, Dinv])
-
-
-def calc_rms_ellipse_params(cov_matrix: torch.Tensor) -> tuple[float, ...]:
-    """Return projected rms ellipse dimensions and orientation.
-
-    Args:
-        cov_matrix: Covariance matrix, shape (2, 2).
-
-    Returns
-        c1: Ellipse semi-axis #1.
-        c2: Ellipse semi-axis #2.
-        angle: Tilt angle below horizontal axis [rad].
-    """
-    sii = cov_matrix[0, 0]
-    sjj = cov_matrix[1, 1]
-    sij = cov_matrix[0, 1]
-
-    angle = -0.5 * torch.arctan2(2.0 * sij, sii - sjj)
-
-    _sin = torch.sin(angle)
-    _cos = torch.cos(angle)
-    _sin2 = _sin**2
-    _cos2 = _cos**2
-
-    c1 = torch.sqrt(abs(sii * _cos2 + sjj * _sin2 - 2 * sij * _sin * _cos))
-    c2 = torch.sqrt(abs(sii * _sin2 + sjj * _cos2 + 2 * sij * _sin * _cos))
-    return (c1, c2, angle)
+from ..diag import Histogram
+from ..utils import array_to_tensor
 
 
 class CovFitterBase:
-    """Base class for covariance matrix fitting.
-
-    This class uses the Differentiable Evolution global optimization routine.
-    """
-
     def __init__(
         self,
         ndim: int,
@@ -135,11 +19,9 @@ class CovFitterBase:
         projections: list[list[Histogram]],
         nsamp: int,
         verbose: bool = 2,
-        seed: int = None,
         loss_scale: float = 1.0,
-        emittance_penalty: float = 0.0,
     ) -> None:
-        """Constructor."""
+
         self.ndim = ndim
         self.nsamp = nsamp
         self.verbose = int(verbose)
@@ -148,9 +30,7 @@ class CovFitterBase:
         self.lb = None
         self.ub = None
 
-        self.rng = np.random.default_rng(seed)
         self.loss_scale = loss_scale
-        self.emittance_penalty = emittance_penalty
 
         self.transforms = transforms
         self.projections = projections
@@ -162,44 +42,40 @@ class CovFitterBase:
         self.iteration = 0
         self.nevals = 0
         self.loss = None
-        self.best_loss = torch.inf
+        self.best_loss = np.inf
         self.best_params = None
 
     def set_params(self, params: np.ndarray) -> None:
-        """Set covariance matrix parameters."""
         self.params = np.clip(params, self.lb, self.ub)
 
-    def build_cov(self) -> np.ndarray:
-        """Build covariance matrix from parameters."""
+    def build_cov(self) -> torch.Tensor:
         raise NotImplementedError
 
-    def sample(self, size: int = None) -> np.ndarray:
-        """Sample particles from Gaussian distribution with current covariance matrix."""
-        size = size or self.nsamp
-        cov_matrix = self.build_cov()
-        mean = torch.zeros(self.ndim)
-        return self.rng.multivariate_normal(mean, cov_matrix, size=size)
+    def sample(self, size: int = None) -> torch.Tensor:
+        if size is None:
+            size = self.nsamp
+        cov_matrix = self.build_cov().float()
+        L = torch.linalg.cholesky(cov_matrix)
+        x = torch.randn((size, self.ndim))
+        return x @ L.T
 
-    def loss_function(self, params: torch.Tensor) -> float:
-        """Minimizes difference between predicted and measured moments."""
+    def loss_function(self, params: np.ndarray) -> float:
         self.set_params(params)
-
         x = self.sample()
 
         loss = 0.0
         for i, transform in enumerate(self.transforms):
             x_out = transform(x)
             for j, diagnostic in enumerate(self.diagnostics[i]):
-                x_out_proj = diagnostic.project(x_out)
-                axis = diagnostic.axis
-                if type(axis) is int:
+                x_out_proj = torch.squeeze(diagnostic.project(x_out))
+                if x_out_proj.ndim == 1:
                     var_pred = torch.var(x_out_proj)
                     var_meas = self.projections[i][j].var()
-                    loss += torch.abs(var_pred - var_meas)
+                    loss += float(torch.abs(var_pred - var_meas))
                 else:
-                    cov_matrix_pred = torch.cov(x_out_proj.T)
-                    cov_matrix_meas = self.projections[i][j].cov()
-                    loss += torch.mean(torch.abs(cov_matrix_pred - cov_matrix_meas))
+                    cov_pred = torch.cov(x_out_proj.T)
+                    cov_meas = self.projections[i][j].cov()
+                    loss += float(torch.mean(torch.abs(cov_pred - cov_meas)))
 
         loss = loss / (i + 1)
         loss = loss * self.loss_scale
@@ -218,8 +94,6 @@ class CovFitterBase:
     def fit(
         self, method: str = "differential_evolution", iters: int = 500, **opt_kws
     ) -> tuple[np.ndarray, OptimizeResult]:
-        """Fit parameters to data."""
-
         def callback_base():
             self.iteration += 1
             if self.verbose > 0:
@@ -229,8 +103,6 @@ class CovFitterBase:
             if self.verbose > 1 and self.ndim < 6:
                 print(f"cov_matrix:")
                 print(self.build_cov())
-
-        result = None
 
         if method == "simplex":
             opt_kws.setdefault("options", {})
@@ -333,30 +205,28 @@ class CholeskyCovFitter(CovFitterBase):
 
         self.nparam = self.ndim * (self.ndim + 1) // 2
 
-        self.L = np.eye(self.ndim)
-        self.z = self.rng.normal(size=(self.nsamp, self.ndim))
+        self.L = torch.eye(self.ndim)
 
         self.idx_diag = (np.arange(self.ndim), np.arange(self.ndim))
         self.idx_offdiag = np.tril_indices(self.ndim, k=-1)
-        print(self.idx_offdiag)
 
         self.ub = np.full(self.nparam, bound)
         self.lb = -self.ub
         self.lb[: self.ndim] = 1.00e-15
 
         self.params = np.zeros(self.nparam)
-        self.params[self.ndim :] = 1.0
+        self.params[: self.ndim] = 1.0
         self.set_params(self.params)
 
-    def build_cov(self) -> np.array:
-        self.L[self.idx_diag] = self.params[: self.ndim]
-        self.L[self.idx_offdiag] = self.params[self.ndim :]
-        return np.matmul(self.L, self.L.T)
+    def build_cov(self) -> torch.Tensor:
+        self.L[self.idx_diag] = array_to_tensor(self.params[: self.ndim])
+        self.L[self.idx_offdiag] = array_to_tensor(self.params[self.ndim :])
+        return self.L @ self.L.T
 
-    def set_cov(self, cov_matrix: np.array) -> None:
-        L = np.linalg.cholesky(cov_matrix)
-        self.params[: self.ndim] = L[self.idx_diag]
-        self.params[self.ndim :] = L[self.idx_offdiag]
+    def set_cov(self, cov_matrix: torch.Tensor) -> None:
+        L = torch.linalg.cholesky(cov_matrix)
+        self.params[: self.ndim] = L[self.idx_diag].numpy()
+        self.params[self.ndim :] = L[self.idx_offdiag].numpy()
 
     def set_bounds(self, bound: float) -> None:
         self.ub = np.full(self.nparam, bound)
@@ -364,45 +234,42 @@ class CholeskyCovFitter(CovFitterBase):
         self.lb[: self.ndim] = 1.00e-15
 
     def sample(self, size: int = None) -> torch.Tensor:
-        if size is None:
-            size = self.nsamp
+        size = size or self.nsamp
 
-        self.L[self.idx_diag] = self.params[: self.ndim]
-        self.L[self.idx_offdiag] = self.params[self.ndim :]
+        self.L[self.idx_diag] = array_to_tensor(self.params[: self.ndim])
+        self.L[self.idx_offdiag] = array_to_tensor(self.params[self.ndim :])
 
-        x = self.rng.normal(size=(size, self.ndim))
-        x = np.matmul(x, self.L.T)
-        x = torch.from_numpy(x).float()
-        return x
+        x = torch.randn((size, self.ndim))
+        return x @ self.L.T
 
 
 class LinearCovFitter(CovFitterBase):
     """Parameterizes linear transformation of Gaussian base distribution.
 
-    There are N x N parameters with no bounds on the parameters.
+    There are N x N parameters with no bounds.
     """
 
-    def __init__(self, bound: float = 1.00e15, resample: bool = True, **kwargs) -> None:
+    def __init__(self, bound: float = 1.00e15, **kwargs) -> None:
         super().__init__(**kwargs)
         self.nparam = self.ndim**2
-        self.ub = torch.full(self.nparam, +bound)
-        self.lb = torch.full(self.nparam, -bound)
-        self.set_params(torch.ravel(torch.eye(self.ndim)))
+        self.ub = np.full(self.nparam, +bound)
+        self.lb = np.full(self.nparam, -bound)
+        self.set_params(np.ravel(np.eye(self.ndim)))
 
     def get_unnorm_matrix(self) -> torch.Tensor:
-        return torch.reshape(self.params, (self.ndim, self.ndim))
+        matrix = np.reshape(self.params, (self.ndim, self.ndim))
+        matrix = torch.from_numpy(matrix).float()
+        return matrix
 
     def sample(self, size: int = None) -> torch.Tensor:
-        size = size or self.nsamp
-        unnorm_matrix = self.get_unnorm_matrix()
-        x = self.rng.normal(size=(size, self.ndim))
-        x = torch.matmul(x, unnorm_matrix.T)
-        return x
+        if size is None:
+            size = self.nsamp
+        matrix = self.get_unnorm_matrix()
+        x = torch.randn((size, self.ndim))
+        return x @ matrix.T
 
     def build_cov(self) -> torch.Tensor:
-        x = self.sample()
-        cov_matrix = torch.cov(x.T)
-        return cov_matrix
+        return self.matrix @ self.matrix.T
 
     def set_cov(self, cov_matrix: torch.Tensor) -> None:
         self.set_params(torch.ravel(torch.linalg.cholesky(cov_matrix)))
