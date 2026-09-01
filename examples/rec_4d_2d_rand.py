@@ -37,6 +37,7 @@ parser.add_argument(
     default="grid",
     choices=["grid", "mh", "nurs", "hmc", "flow"],
 )
+parser.add_argument("--samp-grid-res", type=int, default=32)
 parser.add_argument("--samp-chains", type=int, default=100)
 parser.add_argument("--samp-size", type=int, default=100_000)
 parser.add_argument("--iters", type=int, default=3)
@@ -120,11 +121,9 @@ prior = ment.GaussianPrior(ndim=ndim, scale=1.0)
 
 # Define particle sampler
 if args.samp_method == "grid":
-    samp_grid_shape = ndim * [39]
-    samp_grid_limits = limits
     sampler = ment.samp.GridSampler(
         limits=limits,
-        shape=(ndim * [39]),
+        shape=(ndim * [args.samp_grid_res]),
         noise=0.5,
     )
 if args.samp_method == "hmc":
