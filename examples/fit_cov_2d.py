@@ -87,6 +87,7 @@ fitter = ment.CholeskyCovFitter(
     bound=1.00e06,
     verbose=True,
 )
+fitter.params *= 1000  # move away from solution
 cov_matrix, fit_results = fitter.fit(iters=args.iters, method=args.method)
 
 

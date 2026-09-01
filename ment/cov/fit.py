@@ -18,6 +18,7 @@ class CovFitterBase:
         transforms: list[Callable],
         projections: list[list[Histogram]],
         nsamp: int,
+        unnorm_matrix: torch.Tensor = None,
         verbose: bool = 2,
         loss_scale: float = 1.0,
     ) -> None:
@@ -25,6 +26,11 @@ class CovFitterBase:
         self.ndim = ndim
         self.nsamp = nsamp
         self.verbose = int(verbose)
+
+        self.unnorm_matrix = unnorm_matrix
+        if self.unnorm_matrix is None:
+            self.unnorm_matrix = torch.eye(self.ndim)
+        self.unnorm_matrix = self.unnorm_matrix.float()
 
         self.params = None
         self.lb = None
@@ -49,6 +55,11 @@ class CovFitterBase:
         self.params = np.clip(params, self.lb, self.ub)
 
     def build_cov(self) -> torch.Tensor:
+        S = self._build_cov()
+        V = self.unnorm_matrix
+        return V @ S @ V.T
+
+    def _build_cov(self) -> torch.Tensor:
         raise NotImplementedError
 
     def sample(self, size: int = None) -> torch.Tensor:
@@ -64,6 +75,7 @@ class CovFitterBase:
         x = self.sample()
 
         loss = 0.0
+        count = 0
         for i, transform in enumerate(self.transforms):
             x_out = transform(x)
             for j, diagnostic in enumerate(self.diagnostics[i]):
@@ -76,8 +88,9 @@ class CovFitterBase:
                     cov_pred = torch.cov(x_out_proj.T)
                     cov_meas = self.projections[i][j].cov()
                     loss += float(torch.mean(torch.abs(cov_pred - cov_meas)))
+                count += 1
 
-        loss = loss / (i + 1)
+        loss = loss / count
         loss = loss * self.loss_scale
         self.loss = loss
         self.nevals += 1
@@ -165,6 +178,7 @@ class CovFitterBase:
                 self.loss_function,
                 scipy.optimize.Bounds(self.lb, self.ub),
                 callback=(lambda intermediate_result: callback_base()),
+                x0=self.params,
                 **opt_kws,
             )
         elif method == "dual_annealing":
@@ -218,7 +232,7 @@ class CholeskyCovFitter(CovFitterBase):
         self.params[: self.ndim] = 1.0
         self.set_params(self.params)
 
-    def build_cov(self) -> torch.Tensor:
+    def _build_cov(self) -> torch.Tensor:
         self.L[self.idx_diag] = array_to_tensor(self.params[: self.ndim])
         self.L[self.idx_offdiag] = array_to_tensor(self.params[self.ndim :])
         return self.L @ self.L.T
@@ -268,7 +282,7 @@ class LinearCovFitter(CovFitterBase):
         x = torch.randn((size, self.ndim))
         return x @ matrix.T
 
-    def build_cov(self) -> torch.Tensor:
+    def _build_cov(self) -> torch.Tensor:
         return self.matrix @ self.matrix.T
 
     def set_cov(self, cov_matrix: torch.Tensor) -> None:
