@@ -187,7 +187,7 @@ def plot_dist(x_pred: np.ndarray):
             x,
             limits=limits,
             bins=64,
-            proc_kws=dict(scale="max", blur=0.0),
+            proc_kws=dict(scale="max", blur=1.0),
             kind="contour",
             colors=color,
             diag_kws=dict(color=color, kind="line"),

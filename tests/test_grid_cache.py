@@ -38,6 +38,7 @@ def test_cached_grid_sampling_returns_requested_shape():
     samples = model.sample(128)
 
     assert samples.shape == (128, 2)
+    assert not hasattr(model.sampler, "grid_cache")
     assert model.grid_cache is not None
     assert model.grid_cache["prob_values"].shape == (32 * 32,)
 

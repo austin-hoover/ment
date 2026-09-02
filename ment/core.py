@@ -10,8 +10,6 @@ from .diag import Histogram
 from .diag import Histogram1D
 from .prior import InfiniteUniformPrior
 from .utils import get_grid_points
-from .utils import random_shuffle
-from .utils import random_uniform
 from .utils import wrap_tqdm
 from .utils import unravel
 
@@ -98,6 +96,27 @@ class RegularGridInterpolator:
         return result
 
 
+class LagrangeFunction:
+    def __init__(self, projection: Histogram) -> None:
+        self.projection = projection
+        self.values = torch.zeros_like(self.projection.values)
+        self.coords = None
+        if type(projection) is Histogram1D:
+            self.coords = [projection.coords]
+        else:
+            self.coords = projection.coords
+        self.interp = RegularGridInterpolator(self.coords, self.values)
+
+    def set_values(self, values: torch.Tensor) -> None:
+        self.values = values
+        self.interp = RegularGridInterpolator(self.coords, self.values)
+        return self.values
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        x_proj = self.projection.project(x)
+        return self.interp(x_proj)
+
+
 class RegularGridInterpolationStencil:
     """Cached multilinear interpolation indices and weights for fixed points."""
 
@@ -144,25 +163,88 @@ class RegularGridInterpolationStencil:
         return result * self.valid.to(dtype=values.dtype)
 
 
-class LagrangeFunction:
-    def __init__(self, projection: Histogram) -> None:
-        self.projection = projection
-        self.values = torch.zeros_like(self.projection.values)
-        self.coords = None
-        if type(projection) is Histogram1D:
-            self.coords = [projection.coords]
-        else:
-            self.coords = projection.coords
-        self.interp = RegularGridInterpolator(self.coords, self.values)
+class GridCache:
+    """Cache MENT probability factors on a GridSampler grid."""
 
-    def set_values(self, values: torch.Tensor) -> None:
-        self.values = values
-        self.interp = RegularGridInterpolator(self.coords, self.values)
-        return self.values
+    def __init__(
+        self,
+        sampler: Any,
+        unnormalize: Callable,
+        transforms: list[Callable],
+        lagrange_functions: list[list[Callable]],
+        prior: Any,
+    ) -> None:
+        self.sampler = sampler
+        self.unnormalize = unnormalize
+        self.transforms = transforms
+        self.lagrange_functions = lagrange_functions
+        self.prior = prior
+        self.state = None
 
-    def __call__(self, x: torch.Tensor) -> torch.Tensor:
-        x_proj = self.projection.project(x)
-        return self.interp(x_proj)
+    def clear(self) -> None:
+        self.state = None
+
+    def build(self) -> dict:
+        points = self.sampler.get_grid_points()
+        if self.sampler.device is not None:
+            points = points.to(self.sampler.device)
+
+        x = self.unnormalize(points)
+        interp_stencils = []
+        interp_values = []
+        for index, transform in enumerate(self.transforms):
+            u = transform(x)
+            interp_stencils.append([])
+            interp_values.append([])
+            for lagrange_function in self.lagrange_functions[index]:
+                projected = lagrange_function.projection.project(u)
+                stencil = RegularGridInterpolationStencil(
+                    lagrange_function.coords,
+                    projected,
+                )
+                interp_stencils[-1].append(stencil)
+                interp_values[-1].append(stencil(lagrange_function.values))
+
+        self.state = {
+            "points": points,
+            "interp_stencils": interp_stencils,
+            "interp_values": interp_values,
+            "prior_values": self.prior.prob(points),
+            "prob_values": None,
+        }
+        self.refresh_prob()
+        return self.state
+
+    def ensure(self) -> dict:
+        if self.state is None:
+            return self.build()
+        return self.state
+
+    def refresh_prob(self) -> None:
+        if self.state is None:
+            return
+
+        prob = self.state["prior_values"].clone()
+        for values_by_transform in self.state["interp_values"]:
+            for values in values_by_transform:
+                prob *= values
+        prob = torch.nan_to_num(prob, nan=0.0, posinf=0.0, neginf=0.0)
+        self.state["prob_values"] = torch.clamp(prob, min=0.0)
+
+    def refresh_lagrange(self, index: int, diag_index: int) -> None:
+        if self.state is None:
+            return
+
+        lagrange_function = self.lagrange_functions[index][diag_index]
+        stencil = self.state["interp_stencils"][index][diag_index]
+        self.state["interp_values"][index][diag_index] = stencil(
+            lagrange_function.values
+        )
+        self.refresh_prob()
+
+    def sample(self, size: int) -> torch.Tensor:
+        cache = self.ensure()
+        return self.sampler.sample_values(cache["prob_values"], size)
 
 
 class MENT:
@@ -259,7 +341,7 @@ class MENT:
         self.cache_grid = cache_grid
         if self.cache_grid is None:
             self.cache_grid = self._is_grid_sampler(self.sampler)
-        self.grid_cache = None
+        self._grid_cache = None
 
         self.integration_limits = integration_limits
         self.integration_size = integration_size
@@ -284,8 +366,8 @@ class MENT:
         self.unnorm_matrix_det = torch.linalg.det(self.unnorm_matrix)
         self.norm_matrix = torch.linalg.inv(self.unnorm_matrix)
         self.norm_matrix_det = torch.linalg.det(self.norm_matrix)
-        if hasattr(self, "grid_cache"):
-            self.grid_cache = None
+        if hasattr(self, "_grid_cache") and self._grid_cache is not None:
+            self._grid_cache.clear()
 
     def set_projections(
         self, projections: list[list[Histogram]]
@@ -356,106 +438,41 @@ class MENT:
             self.cache_grid
             and self.mode in ["sample", "forward"]
             and self._is_grid_sampler(self.sampler)
+            and hasattr(self.sampler, "sample_values")
         )
 
-    def _build_grid_cache(self) -> dict:
-        points = self.sampler.get_grid_points()
-        if self.sampler.device is not None:
-            points = points.to(self.sampler.device)
-
-        x = self.unnormalize(points)
-        interp_stencils = []
-        interp_values = []
-        for index, transform in enumerate(self.transforms):
-            u = transform(x)
-            interp_stencils.append([])
-            interp_values.append([])
-            for lagrange_function in self.lagrange_functions[index]:
-                projected = lagrange_function.projection.project(u)
-                stencil = RegularGridInterpolationStencil(
-                    lagrange_function.coords,
-                    projected,
-                )
-                interp_stencils[-1].append(stencil)
-                interp_values[-1].append(stencil(lagrange_function.values))
-
-        self.grid_cache = {
-            "points": points,
-            "interp_stencils": interp_stencils,
-            "interp_values": interp_values,
-            "prior_values": self.prior.prob(points),
-            "prob_values": None,
-        }
-        self._refresh_grid_cache_prob()
-        return self.grid_cache
-
-    def _ensure_grid_cache(self) -> dict:
-        if self.grid_cache is None:
-            return self._build_grid_cache()
-        return self.grid_cache
-
-    def _refresh_grid_cache_prob(self) -> None:
-        if self.grid_cache is None:
-            return
-
-        prob = self.grid_cache["prior_values"].clone()
-        for values_by_transform in self.grid_cache["interp_values"]:
-            for values in values_by_transform:
-                prob *= values
-        prob = torch.nan_to_num(prob, nan=0.0, posinf=0.0, neginf=0.0)
-        self.grid_cache["prob_values"] = torch.clamp(prob, min=0.0)
+    def _ensure_grid_cache(self) -> GridCache:
+        if self._grid_cache is None:
+            self._grid_cache = GridCache(
+                sampler=self.sampler,
+                unnormalize=self.unnormalize,
+                transforms=self.transforms,
+                lagrange_functions=self.lagrange_functions,
+                prior=self.prior,
+            )
+        return self._grid_cache
 
     def _refresh_grid_cache_lagrange(self, index: int, diag_index: int) -> None:
-        if self.grid_cache is None:
+        if self._grid_cache is None:
             return
-
-        lagrange_function = self.lagrange_functions[index][diag_index]
-        stencil = self.grid_cache["interp_stencils"][index][diag_index]
-        self.grid_cache["interp_values"][index][diag_index] = stencil(
-            lagrange_function.values
-        )
-        self._refresh_grid_cache_prob()
+        self._grid_cache.refresh_lagrange(index, diag_index)
 
     def _sample_grid_cache(self, size: int) -> torch.Tensor:
-        cache = self._ensure_grid_cache()
-        values = cache["prob_values"]
-        values_sum = torch.sum(values)
-        if values_sum <= 0.0:
-            raise RuntimeError("Probability is zero on the grid sampler domain.")
+        return self._ensure_grid_cache().sample(size)
 
-        idx = torch.multinomial(
-            values / values_sum,
-            num_samples=int(size),
-            replacement=True,
-            generator=self.sampler.rng,
-        )
-        unraveled = torch.unravel_index(idx, self.sampler.shape)
+    @property
+    def grid_cache(self) -> dict | None:
+        if self._grid_cache is None:
+            return None
+        return self._grid_cache.state
 
-        x = torch.zeros((int(size), self.ndim), device=self.sampler.device)
-        for axis in range(self.ndim):
-            lb = self.sampler.edges[axis][unraveled[axis]].to(device=x.device)
-            ub = self.sampler.edges[axis][unraveled[axis] + 1].to(device=x.device)
-            x[:, axis] = random_uniform(
-                lb,
-                ub,
-                int(size),
-                device=self.sampler.device,
-                rng=self.sampler.rng,
-            )
-
-            if self.sampler.noise:
-                delta = (ub - lb) * self.sampler.noise
-                x[:, axis] += 0.5 * random_uniform(
-                    -delta,
-                    delta,
-                    int(size),
-                    device=self.sampler.device,
-                    rng=self.sampler.rng,
-                )
-
-        if self.sampler.shuffle:
-            x = random_shuffle(x, rng=self.sampler.rng)
-        return torch.squeeze(x)
+    @grid_cache.setter
+    def grid_cache(self, value: dict | None) -> None:
+        if value is None:
+            if self._grid_cache is not None:
+                self._grid_cache.clear()
+            return
+        self._ensure_grid_cache().state = value
 
     def sample(self, size: int, **kws) -> torch.Tensor:
         """Sample `size` particles from the distribution in normalized space.
@@ -759,6 +776,6 @@ class MENT:
         self.sampler = state["sampler"]
         self.set_unnorm_matrix(state["unnorm_matrix"])
         self.cache_grid = state.get("cache_grid", self._is_grid_sampler(self.sampler))
-        self.grid_cache = None
+        self._grid_cache = None
 
         file.close()
