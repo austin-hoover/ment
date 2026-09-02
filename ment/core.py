@@ -1,8 +1,8 @@
-import pickle
-from typing import Callable
-from typing import Any
-
 import itertools
+import pickle
+from typing import Any
+from typing import Callable
+
 import numpy as np
 import torch
 
@@ -379,14 +379,13 @@ class MENT:
                 interp_stencils[-1].append(stencil)
                 interp_values[-1].append(stencil(lagrange_function.values))
 
-        cache = {
+        self.grid_cache = {
             "points": points,
             "interp_stencils": interp_stencils,
             "interp_values": interp_values,
             "prior_values": self.prior.prob(points),
             "prob_values": None,
         }
-        self.grid_cache = cache
         self._refresh_grid_cache_prob()
         return self.grid_cache
 
