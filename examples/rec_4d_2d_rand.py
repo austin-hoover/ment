@@ -38,13 +38,14 @@ parser.add_argument(
     choices=["grid", "mh", "nurs", "hmc", "flow"],
 )
 parser.add_argument("--samp-grid-res", type=int, default=32)
+parser.add_argument("--samp-grid-noise", type=float, default=0.0)
 parser.add_argument("--samp-chains", type=int, default=100)
 parser.add_argument("--samp-size", type=int, default=100_000)
 parser.add_argument("--iters", type=int, default=3)
 parser.add_argument("--lr", type=float, default=0.75)
 parser.add_argument("--seed", type=int, default=123)
 parser.add_argument("--show", action="store_true")
-parser.add_argument("--eval-size", type=int, default=100_000)
+parser.add_argument("--eval-size", type=int, default=500_000)
 args = parser.parse_args()
 
 
@@ -124,7 +125,7 @@ if args.samp_method == "grid":
     sampler = ment.samp.GridSampler(
         limits=limits,
         shape=(ndim * [args.samp_grid_res]),
-        noise=0.5,
+        noise=args.samp_grid_noise,
     )
 if args.samp_method == "hmc":
     chains = args.samp_chains
@@ -177,18 +178,29 @@ model = ment.MENT(
 
 plot_nsamp = x_true.shape[0]
 
+
+def plot_dist(x_pred: np.ndarray):
+    grid = ment.train.plot.CornerGrid(ndim, figsize=(ndim * 1.4, ndim * 1.4))
+    for i, x in enumerate([x_true, x_pred]):
+        color = ["black", "red"][i]
+        grid.plot(
+            x,
+            limits=limits,
+            bins=64,
+            proc_kws=dict(scale="max", blur=1.0),
+            kind="contour",
+            colors=color,
+            diag_kws=dict(color=color, kind="line"),
+            levels=np.linspace(0.01, 1.0, 7),
+            linewidths=1.1,
+        )
+    return (grid.fig, grid.axs)
+
+
 plot_model = Plotter(
     n_samples=plot_nsamp,
-    plot_proj=[
-        PlotProj2DContour(),
-    ],
-    plot_dist=[
-        PlotDistCorner(
-            fig_kws=dict(figsize=(ndim * 1.4, ndim * 1.4)),
-            limits=(ndim * [(-xmax, xmax)]),
-            bins=64,
-        ),
-    ],
+    plot_proj=[PlotProj2DContour()],
+    plot_dist=[plot_dist],
 )
 
 eval_model = ment.train.Evaluator(nsamp=100_000)
@@ -201,25 +213,3 @@ trainer = ment.train.Trainer(
 )
 
 trainer.train(iters=3, lr=0.95)
-
-
-# Evaluate
-# --------------------------------------------------------------------------------------
-
-x_pred = model.unnormalize(model.sample(1_000_000))
-
-grid = ment.train.plot.CornerGrid(ndim, figsize=(ndim * 1.4, ndim * 1.4))
-for i, x in enumerate([x_true, x_pred]):
-    color = ["black", "red"][i]
-    grid.plot(
-        x,
-        limits=limits,
-        bins=64,
-        proc_kws=dict(scale="max", blur=1.0),
-        kind="contour",
-        colors=color,
-        diag_kws=dict(color=color, kind="line"),
-        levels=np.linspace(0.01, 1.0, 7),
-    )
-plt.savefig(os.path.join(output_dir, "figures", "fig_corner_final"))
-plt.close("all")

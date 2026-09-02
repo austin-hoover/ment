@@ -1,102 +1,25 @@
-import pickle
-from typing import Callable
-from typing import Any
-
 import itertools
+import pickle
+from typing import Any
+from typing import Callable
+
 import numpy as np
 import torch
 
 from .diag import Histogram
 from .diag import Histogram1D
+from .interp import RegularGridInterpolator
+from .interp import RegularGridInterpolationStencil
+from .samp import GridSampler
 from .prior import InfiniteUniformPrior
 from .utils import get_grid_points
 from .utils import wrap_tqdm
 from .utils import unravel
 
 
-class RegularGridInterpolator:
-    """Interpolate points on a regular grid.
-
-    https://github.com/sbarratt/torch_interpolations/blob/master/torch_interpolations/multilinear.py
-    """
-
-    def __init__(
-        self, coords: list[torch.Tensor], values: torch.Tensor, fill_value: float = 0.0
-    ) -> None:
-        self.coords = coords
-        self.values = values
-        self.fill_value = torch.tensor(fill_value)
-
-        if type(self.coords) is torch.Tensor:
-            self.coords = [
-                self.coords,
-            ]
-
-        assert isinstance(self.coords, tuple) or isinstance(self.coords, list)
-        assert isinstance(self.values, torch.Tensor)
-
-        self.ms = list(self.values.shape)
-        self.ndim = len(self.coords)
-
-        assert len(self.ms) == self.ndim
-
-        for i, p in enumerate(self.coords):
-            assert isinstance(p, torch.Tensor)
-            assert p.shape[0] == self.values.shape[i]
-
-    def __call__(self, new_points: torch.Tensor) -> torch.Tensor:
-        assert self.coords is not None
-        assert self.values is not None
-
-        if new_points.ndim == 1:
-            new_points = new_points[:, None]
-
-        new_points_t = new_points.T
-
-        assert new_points_t.shape[0] == self.ndim
-
-        K = new_points_t.shape[1]
-        for x in new_points_t:
-            assert x.shape[0] == K
-
-        idxs = []
-        dists = []
-        overalls = []
-        for p, x in zip(self.coords, new_points_t):
-            idx_right = torch.bucketize(x.contiguous(), p)
-            idx_right[idx_right >= p.shape[0]] = p.shape[0] - 1
-            idx_left = (idx_right - 1).clamp(0, p.shape[0] - 1)
-            dist_left = x - p[idx_left]
-            dist_right = p[idx_right] - x
-            dist_left[dist_left < 0] = 0.0
-            dist_right[dist_right < 0] = 0.0
-            both_zero = (dist_left == 0) & (dist_right == 0)
-            dist_left[both_zero] = dist_right[both_zero] = 1.0
-
-            idxs.append((idx_left, idx_right))
-            dists.append((dist_left, dist_right))
-            overalls.append(dist_left + dist_right)
-
-        numerator = 0.0
-        for indexer in itertools.product([0, 1], repeat=self.ndim):
-            as_s = [idx[onoff] for onoff, idx in zip(indexer, idxs)]
-            bs_s = [dist[1 - onoff] for onoff, dist in zip(indexer, dists)]
-            numerator += self.values[tuple(as_s)] * torch.prod(torch.stack(bs_s), dim=0)
-        denominator = torch.prod(torch.stack(overalls), dim=0)
-        result = numerator / denominator
-
-        # Handle bounds
-        out_of_bounds = torch.zeros(
-            new_points_t.shape[1], dtype=torch.bool, device=self.values.device
-        )
-        for x, c in zip(new_points_t, self.coords):
-            out_of_bounds = out_of_bounds | (x < c[0]) | (x > c[-1])
-        result[out_of_bounds] = self.fill_value
-
-        return result
-
-
 class LagrangeFunction:
+    """Represents exponential of Lagrange multiplier function on regular grid."""
+
     def __init__(self, projection: Histogram) -> None:
         self.projection = projection
         self.values = torch.zeros_like(self.projection.values)
@@ -117,7 +40,94 @@ class LagrangeFunction:
         return self.interp(x_proj)
 
 
+class GridCache:
+    """Caches MENT probability factors for use with GridSampler."""
+
+    def __init__(
+        self,
+        sampler: Any,
+        unnormalize: Callable,
+        transforms: list[Callable],
+        lagrange_functions: list[list[Callable]],
+        prior: Any,
+    ) -> None:
+        self.sampler = sampler
+        self.unnormalize = unnormalize
+        self.transforms = transforms
+        self.lagrange_functions = lagrange_functions
+        self.prior = prior
+        self.state = None
+
+    def clear(self) -> None:
+        self.state = None
+
+    def build(self) -> dict:
+        points = self.sampler.get_grid_points()
+        if self.sampler.device is not None:
+            points = points.to(self.sampler.device)
+
+        x = self.unnormalize(points)
+        interp_stencils = []
+        interp_values = []
+        for index, transform in enumerate(self.transforms):
+            x_out = transform(x)
+            interp_stencils.append([])
+            interp_values.append([])
+            for lagrange_function in self.lagrange_functions[index]:
+                projected = lagrange_function.projection.project(x_out)
+                stencil = RegularGridInterpolationStencil(
+                    lagrange_function.coords,
+                    projected,
+                )
+                interp_stencils[-1].append(stencil)
+                interp_values[-1].append(stencil(lagrange_function.values))
+
+        self.state = {
+            "points": points,
+            "interp_stencils": interp_stencils,
+            "interp_values": interp_values,
+            "prior_values": self.prior.prob(points),
+            "prob_values": None,
+        }
+        self.refresh_prob()
+        return self.state
+
+    def ensure(self) -> dict:
+        if self.state is None:
+            return self.build()
+        return self.state
+
+    def refresh_prob(self) -> None:
+        if self.state is None:
+            return
+
+        prob = self.state["prior_values"].clone()
+        for values_by_transform in self.state["interp_values"]:
+            for values in values_by_transform:
+                prob *= values
+        prob = torch.nan_to_num(prob, nan=0.0, posinf=0.0, neginf=0.0)
+        self.state["prob_values"] = torch.clamp(prob, min=0.0)
+
+    def refresh_lagrange(self, index: int, diag_index: int) -> None:
+        if self.state is None:
+            return
+
+        lagrange_function = self.lagrange_functions[index][diag_index]
+        stencil = self.state["interp_stencils"][index][diag_index]
+        self.state["interp_values"][index][diag_index] = stencil(
+            lagrange_function.values
+        )
+        self.refresh_prob()
+
+    def sample(self, size: int) -> torch.Tensor:
+        cache = self.ensure()
+        values = cache["prob_values"]
+        return self.sampler.sample_values(values, size)
+
+
 class MENT:
+    """Maximum Entropy Tomography (MENT) model."""
+
     def __init__(
         self,
         ndim: int,
@@ -131,6 +141,7 @@ class MENT:
         integration_size: int = None,
         integration_loop: bool = True,
         diag_kws: dict = None,
+        cache_grid: bool = None,
         verbose: int = 1,
         mode: str = "sample",
     ) -> None:
@@ -167,6 +178,10 @@ class MENT:
         diag_kws:
             Key word arguments passed to `Histogram` constructor. Options include
             `blur`, `thresh`, and `thresh_type`.
+        cache_grid:
+            If True, cache probability values on a ``GridSampler`` grid and sample
+            from those cached values. If None, this is enabled automatically for
+            compatible grid samplers in sample/forward mode.
         verbose:
             Whether to print updates during calculations.
         mode:
@@ -177,9 +192,14 @@ class MENT:
         self.verbose = int(verbose)
         self.mode = mode
 
+        # Set transforms and projection data
         self.transforms = transforms
         self.projections = self.set_projections(projections)
 
+        # Setup histogram diagnostics.
+        ## TODO: separate diagnostic class from Projection class? The Projection object
+        ## just needs to store the bin coordinates and values. The Histogram object
+        ## needs to bin the particles on the grid.
         if diag_kws is None:
             diag_kws = {}
 
@@ -192,18 +212,27 @@ class MENT:
                     setattr(diag_new, key, val)
                 self.diagnostics[-1].append(diag_new)
 
+        # Prior distribution
         self.prior = prior
         if self.prior is None:
             self.prior = InfiniteUniformPrior(ndim=ndim)
 
+        # Normalization matrix
         self.unnorm_matrix = unnorm_matrix
         self.set_unnorm_matrix(unnorm_matrix)
 
+        # Initialize model parameters
         self.lagrange_functions = self.init_lagrange_functions()
 
+        # Sampling
         self.sampler = sampler
         self.nsamp = int(nsamp)
+        self.cache_grid = cache_grid
+        if self.cache_grid is None:
+            self.cache_grid = isinstance(self.sampler, GridSampler)
+        self._grid_cache = None
 
+        # Integration
         self.integration_limits = integration_limits
         self.integration_size = integration_size
         self.integration_points = None
@@ -227,6 +256,8 @@ class MENT:
         self.unnorm_matrix_det = torch.linalg.det(self.unnorm_matrix)
         self.norm_matrix = torch.linalg.inv(self.unnorm_matrix)
         self.norm_matrix_det = torch.linalg.det(self.norm_matrix)
+        if hasattr(self, "_grid_cache") and self._grid_cache is not None:
+            self._grid_cache.clear()
 
     def set_projections(
         self, projections: list[list[Histogram]]
@@ -278,15 +309,55 @@ class MENT:
 
         prob = torch.ones(z.shape[0])
         for index, transform in enumerate(self.transforms):
-            u = transform(x)
+            x_out = transform(x)
             for lagrange_function in self.lagrange_functions[index]:
-                prob = prob * lagrange_function(u)
+                prob = prob * lagrange_function(x_out)
         prob = prob * self.prior.prob(z)
 
         if squeeze:
             prob = torch.squeeze(prob)
 
         return prob
+
+    def _grid_cache_enabled(self) -> bool:
+        return (
+            self.cache_grid
+            and self.mode in ["sample", "forward"]
+            and isinstance(self.sampler, GridSampler)
+        )
+
+    def _ensure_grid_cache(self) -> GridCache:
+        if self._grid_cache is None:
+            self._grid_cache = GridCache(
+                sampler=self.sampler,
+                unnormalize=self.unnormalize,
+                transforms=self.transforms,
+                lagrange_functions=self.lagrange_functions,
+                prior=self.prior,
+            )
+        return self._grid_cache
+
+    def _refresh_grid_cache_lagrange(self, index: int, diag_index: int) -> None:
+        if self._grid_cache is None:
+            return
+        self._grid_cache.refresh_lagrange(index, diag_index)
+
+    def _sample_grid_cache(self, size: int) -> torch.Tensor:
+        return self._ensure_grid_cache().sample(size)
+
+    @property
+    def grid_cache(self) -> dict | None:
+        if self._grid_cache is None:
+            return None
+        return self._grid_cache.state
+
+    @grid_cache.setter
+    def grid_cache(self, value: dict | None) -> None:
+        if value is None:
+            if self._grid_cache is not None:
+                self._grid_cache.clear()
+            return
+        self._ensure_grid_cache().state = value
 
     def sample(self, size: int, **kws) -> torch.Tensor:
         """Sample `size` particles from the distribution in normalized space.
@@ -295,6 +366,8 @@ class MENT:
 
         Key word arguments go to `self.sampler`.
         """
+        if self._grid_cache_enabled() and not kws:
+            return self._sample_grid_cache(size)
 
         def prob_func(z: torch.Tensor) -> torch.Tensor:
             return self.prob(z, squeeze=False)
@@ -403,30 +476,30 @@ class MENT:
                 projection_points = self._get_projection_points(index, diag_index)
                 integration_points = self._get_integration_points(index, diag_index)
 
-                # Initialize array of integration points (u).
-                u = torch.zeros((integration_points.shape[0], self.ndim))
+                # Initialize array of integration points (x_out).
+                x_out = torch.zeros((integration_points.shape[0], self.ndim))
                 for k, axis in enumerate(integration_axis):
                     if integration_ndim == 1:
-                        u[:, axis] = integration_points
+                        x_out[:, axis] = integration_points
                     else:
-                        u[:, axis] = integration_points[:, k]
+                        x_out[:, axis] = integration_points[:, k]
 
                 # Initialize array of projected densities (values_proj).
                 values_proj = torch.zeros(projection_points.shape[0])
                 for i, point in enumerate(
                     wrap_tqdm(projection_points, self.verbose > 1)
                 ):
-                    # Set values of u along projection axis.
+                    # Set values of x_out along projection axis.
                     for k, axis in enumerate(projection_axis):
                         if diagnostic.ndim == 1:
-                            u[:, axis] = point
+                            x_out[:, axis] = point
                         else:
-                            u[:, axis] = point[k]
+                            x_out[:, axis] = point[k]
 
                     # Compute the probability density at the integration points.
                     # Here we assume a volume-preserving transformation with Jacobian
                     # determinant equal to 1, such that p(x) = p(u).
-                    prob = self.prob(self.normalize(transform.inverse(u)))
+                    prob = self.prob(self.normalize(transform.inverse(x_out)))
 
                     # Sum over all integration points.
                     values_proj[i] = torch.sum(prob)
@@ -540,6 +613,7 @@ class MENT:
                 lagrange_function.values = values_lagr
                 lagrange_function.set_values(lagrange_function.values)
                 self.lagrange_functions[index][diag_index] = lagrange_function
+                self._refresh_grid_cache_lagrange(index, diag_index)
 
         self.iteration += 1
 
@@ -552,7 +626,7 @@ class MENT:
         return parameters
 
     def save(self, path: str) -> None:
-        """Save model to pickled file."""
+        """Save model to file."""
         state = {
             "lagrange_functions": self.lagrange_functions,
             "transforms": self.transforms,
@@ -563,6 +637,7 @@ class MENT:
             "sampler": self.sampler,
             "unnorm_matrix": self.unnorm_matrix,
             "iteration": self.iteration,
+            "cache_grid": self.cache_grid,
         }
 
         # Can we just do `pickle.dump(self, file)`?
@@ -571,7 +646,7 @@ class MENT:
         file.close()
 
     def load(self, path: str) -> None:
-        """Load model from pickled file."""
+        """Load model from file."""
         file = open(path, "rb")
 
         state = pickle.load(file)
@@ -585,5 +660,7 @@ class MENT:
         self.prior = state["prior"]
         self.sampler = state["sampler"]
         self.set_unnorm_matrix(state["unnorm_matrix"])
+        self.cache_grid = state.get("cache_grid", isinstance(self.sampler, GridSampler))
+        self._grid_cache = None
 
         file.close()

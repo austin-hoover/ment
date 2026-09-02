@@ -33,6 +33,8 @@ parser.add_argument(
     "--mode", type=str, default="reverse", choices=["reverse", "forward"]
 )
 parser.add_argument("--samp-method", type=str, default="mh")
+parser.add_argument("--samp-grid-res", type=int, default=32)
+parser.add_argument("--samp-grid-noise", type=float, default=0.0)
 parser.add_argument("--iters", type=int, default=3)
 parser.add_argument("--lr", type=float, default=0.75)
 parser.add_argument("--seed", type=int, default=123)
@@ -116,15 +118,10 @@ prior = ment.GaussianPrior(ndim=ndim, scale=1.0)
 samp_method = args.samp_method
 
 if samp_method == "grid":
-    samp_grid_res = 32
-    samp_noise = 0.5
-    samp_grid_shape = ndim * [samp_grid_res]
-    samp_grid_limits = limits
-
     sampler = ment.samp.GridSampler(
-        grid_limits=samp_grid_limits,
-        grid_shape=samp_grid_shape,
-        noise=samp_noise,
+        limits=limits,
+        shape=(ndim * [args.samp_grid_res]),
+        noise=args.samp_grid_noise,
     )
 
 elif samp_method == "mh":

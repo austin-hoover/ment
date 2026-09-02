@@ -1,6 +1,7 @@
 from . import cov
 from . import diag
 from . import dist
+from . import interp
 from . import prior
 from . import train
 from . import samp
@@ -8,12 +9,13 @@ from . import sim
 
 from .core import MENT
 from .core import LagrangeFunction
-from .core import RegularGridInterpolator
 from .cov import CovFitterBase
 from .cov import CholeskyCovFitter
 from .cov import LinearCovFitter
 from .diag import Histogram1D
 from .diag import HistogramND
+from .interp import RegularGridInterpolator
+from .interp import RegularGridInterpolationStencil
 from .prior import GaussianPrior
 from .prior import InfiniteUniformPrior
 from .samp import *

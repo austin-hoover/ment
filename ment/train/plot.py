@@ -391,7 +391,6 @@ class PlotProj2DContour:
         self.plot_kws["proc_kws"].setdefault("scale", "max")
         self.plot_kws["proc_kws"].setdefault("blur", 0.0)
         self.plot_kws.setdefault("levels", np.linspace(0.01, 1.0, 7))
-        self.plot_kws.setdefault("linewidths", 0.75)
 
         self.plot_kws_true.setdefault("colors", "black")
         self.plot_kws_pred.setdefault("colors", "red")
@@ -412,7 +411,7 @@ class PlotProj2DContour:
         fig, axs = plt.subplots(
             ncols=ncols,
             nrows=nrows,
-            figsize=(1.7 * ncols, 1.7 * nrows),
+            figsize=(1.5 * ncols, 1.5 * nrows),
             sharex=self.lim_share,
             sharey=self.lim_share,
         )
