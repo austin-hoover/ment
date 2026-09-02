@@ -53,7 +53,7 @@ class GridSampler(Sampler):
         return x
 
     def sample_values(self, values: torch.Tensor, size: int) -> torch.Tensor:
-        """Sample from values defined on this sampler's flattened grid."""
+        """Sample from distribution function values on flattened grid."""
         values_sum = torch.sum(values)
         if values_sum <= 0.0:
             raise RuntimeError("Probability is zero on the grid sampler domain.")
@@ -93,5 +93,6 @@ class GridSampler(Sampler):
         return torch.squeeze(x)
 
     def _sample(self, prob_func: Callable, size: int) -> torch.Tensor:
+        """Sample from distribution function."""
         values = prob_func(self.get_grid_points())
         return self.sample_values(values, size)
