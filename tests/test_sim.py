@@ -22,6 +22,14 @@ def test_linear_transform_forward_and_inverse_round_trip():
     assert torch.allclose(recovered, x)
 
 
+def test_linear_transform_to_moves_matrix_and_inverse():
+    transform = ment.LinearTransform(torch.eye(2)).to("cpu")
+
+    assert transform.device == torch.device("cpu")
+    assert transform.matrix.device == transform.device
+    assert transform.matrix_inv.device == transform.device
+
+
 def test_composed_transform_forward_and_inverse_round_trip():
     scale = ment.LinearTransform(torch.tensor([[2.0, 0.0], [0.0, 2.0]]))
     rotate = ment.LinearTransform(ment.rotation_matrix(torch.pi / 2.0))
@@ -33,6 +41,17 @@ def test_composed_transform_forward_and_inverse_round_trip():
     recovered = transform.inverse(z)
 
     assert torch.allclose(recovered, x, atol=1e-6)
+
+
+def test_composed_transform_to_moves_child_transforms():
+    transforms = (
+        ment.IdentityTransform(),
+        ment.LinearTransform(torch.eye(2)),
+    )
+    transform = ment.ComposedTransform(*transforms).to("cpu")
+
+    assert transform.device == torch.device("cpu")
+    assert all(child.device == transform.device for child in transforms)
 
 
 def test_simulate_returns_copied_diagnostics_with_binned_values():

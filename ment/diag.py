@@ -19,6 +19,33 @@ class Histogram:
         self.thresh = thresh
         self.thresh_type = thresh_type
 
+    def to(self, device: torch.device | str) -> "Histogram":
+        """Move the histogram's tensor state to ``device`` in place."""
+        device = torch.device(device)
+        for name in (
+            "values",
+            "coords",
+            "edges",
+            "bin_sizes",
+            "bin_size",
+            "bin_volume",
+            "bin_width",
+            "direction",
+        ):
+            value = getattr(self, name, None)
+            if isinstance(value, torch.Tensor):
+                setattr(self, name, value.to(device))
+            elif isinstance(value, list):
+                setattr(
+                    self,
+                    name,
+                    [
+                        item.to(device) if isinstance(item, torch.Tensor) else item
+                        for item in value
+                    ],
+                )
+        return self
+
 
 class HistogramND(Histogram):
     def __init__(
@@ -59,7 +86,7 @@ class HistogramND(Histogram):
         self.shape = tuple([len(c) for c in self.coords])
         self.values = values
         if self.values is None:
-            self.values = torch.zeros(self.shape)
+            self.values = torch.zeros(self.shape, device=self.coords[0].device)
         self.normalize()
 
     def copy(self) -> Self:
@@ -107,7 +134,9 @@ class HistogramND(Histogram):
         return self.bin(x)
 
     def cov(self) -> torch.Tensor:
-        S = torch.zeros((self.ndim, self.ndim))
+        S = torch.zeros(
+            (self.ndim, self.ndim), device=self.values.device, dtype=self.values.dtype
+        )
 
         values_sum = torch.sum(self.values)
         if values_sum <= 0.0:
@@ -160,7 +189,7 @@ class Histogram1D(Histogram):
         self.shape = len(self.coords)
         self.values = values
         if self.values is None:
-            self.values = torch.zeros(self.shape)
+            self.values = torch.zeros(self.shape, device=self.coords.device)
         self.normalize()
 
     def copy(self) -> Self:

@@ -24,5 +24,6 @@ from .sim import simulate_with_diag_update
 from .sim import Transform
 from .sim import LinearTransform
 from .sim import IdentityTransform
+from .sim import ProjectionTransform1D
 from .sim import ComposedTransform
 from .utils import *

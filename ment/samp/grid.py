@@ -33,11 +33,21 @@ class GridSampler(Sampler):
                 self.limits[axis][0],
                 self.limits[axis][1],
                 self.shape[axis] + 1,
+                device=self.device,
             )
             for axis in range(self.ndim)
         ]
         self.coords = [edges_to_coords(e) for e in self.edges]
         self.points = None
+
+    def to(self, device: torch.device | str) -> "GridSampler":
+        """Move the cached grid and configure sampling for ``device``."""
+        super().to(device)
+        self.edges = [edge.to(self.device) for edge in self.edges]
+        self.coords = [coord.to(self.device) for coord in self.coords]
+        if self.points is not None:
+            self.points = self.points.to(self.device)
+        return self
 
     def get_grid_points(self) -> torch.Tensor:
         if self.points is not None:
@@ -66,7 +76,9 @@ class GridSampler(Sampler):
         )
         unraveled = torch.unravel_index(idx, self.shape)
 
-        x = torch.zeros((int(size), self.ndim), device=self.device)
+        x = torch.zeros(
+            (int(size), self.ndim), device=values.device, dtype=values.dtype
+        )
         for axis in range(self.ndim):
             lb = self.edges[axis][unraveled[axis]].to(device=x.device)
             ub = self.edges[axis][unraveled[axis] + 1].to(device=x.device)

@@ -1,6 +1,5 @@
-"""2D MENT reconstruction with normalization matrix."""
+"""2D MENT reconstruction."""
 import argparse
-import math
 import os
 import pathlib
 import time
@@ -45,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--samp-grid-res", type=int, default=100)
     parser.add_argument("--samp-grid-noise", type=float, default=0.0)
     parser.add_argument("--show", action="store_true")
+    parser.add_argument("--device", type=str, default="cpu")
     return parser.parse_args()
 
 
@@ -52,6 +52,7 @@ def main(args: argparse.Namespace) -> None:
 
     ndim = 2
     seed = 0
+    device = torch.device(args.device)
 
     path = pathlib.Path(__file__)
     timestamp = time.strftime("%y%m%d_%H%M%S")
@@ -63,14 +64,7 @@ def main(args: argparse.Namespace) -> None:
 
     dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=seed, normalize=True)
     x_true = dist.sample(1_000_000)
-
-    # Add linear transformation
-    M = torch.eye(ndim)
-    M[0, 0] = 0.35
-    R = ment.utils.rotation_matrix(math.pi * 0.25)
-    M = R @ M
-
-    x_true = x_true @ M.T
+    x_true = x_true.float().to(device)
 
     # Forward model
     # ----------------------------------------------------------------------------------
@@ -80,9 +74,10 @@ def main(args: argparse.Namespace) -> None:
         angle = torch.pi * (i / args.nmeas)
         matrix = ment.utils.rotation_matrix(angle)
         transform = ment.LinearTransform(matrix)
+        transform = transform.to(device)
         transforms.append(transform)
 
-    bin_edges = torch.linspace(-args.xmax, args.xmax, args.nbins)
+    bin_edges = torch.linspace(-args.xmax, args.xmax, args.nbins, device=device)
     diagnostics = []
     for _ in transforms:
         diagnostic = ment.Histogram1D(axis=0, edges=bin_edges)
@@ -96,19 +91,13 @@ def main(args: argparse.Namespace) -> None:
     # Reconstruction model
     # ----------------------------------------------------------------------------------
 
-    cov_matrix = torch.cov(x_true.T)
-    norm_matrix = ment.cov.build_norm_matrix_from_cov(cov_matrix, scale=True)
-    unnorm_matrix = torch.linalg.inv(norm_matrix)
-
-    print("V:")
-    print(unnorm_matrix)
-
     prior = ment.GaussianPrior(ndim=2, scale=1.0)
 
     sampler = ment.samp.GridSampler(
         limits=(2 * [(-args.xmax, args.xmax)]),
         shape=(args.samp_grid_res, args.samp_grid_res),
         noise=args.samp_grid_noise,
+        device=device,
     )
 
     integration_limits = [(-args.xmax, args.xmax)]
@@ -119,17 +108,38 @@ def main(args: argparse.Namespace) -> None:
         ndim=ndim,
         transforms=transforms,
         projections=projections,
-        unnorm_matrix=unnorm_matrix,
         prior=prior,
         sampler=sampler,
         integration_limits=integration_limits,
         integration_size=integration_size,
         integration_loop=False,
         mode=args.mode,
+        device=device,
     )
 
     # Training
     # ----------------------------------------------------------------------------------
+
+    def grab(tensor: torch.Tensor) -> np.ndarray:
+        return tensor.detach().cpu().numpy()
+
+    def eval_model(model: ment.MENT) -> None:
+        results = {}
+
+        x_pred = model.sample(1_000_000)
+        projections_pred = ment.unravel(
+            ment.simulate(x_pred, model.transforms, model.diagnostics)
+        )
+        projections_true = ment.unravel(model.projections)
+
+        pred_error = 0.0
+        for proj_pred, proj_true in zip(projections_pred, projections_true):
+            y_pred = grab(proj_pred.values)
+            y_true = grab(proj_true.values)
+            pred_error += torch.mean(torch.abs(y_pred - y_true))
+        pred_error = pred_error / len(projections_pred)
+        results["prediction_error"] = float(pred_error)
+        return results
 
     def plot_model(model: ment.MENT) -> list[plt.Figure]:
         figs = []
@@ -142,6 +152,8 @@ def main(args: argparse.Namespace) -> None:
         projections_pred = ment.unravel(
             ment.simulate(x_pred, model.transforms, model.diagnostics)
         )
+
+        x_pred = grab(x_pred)
 
         # Plot distribution
         limits = 2 * [(-args.xmax, args.xmax)]
@@ -167,12 +179,16 @@ def main(args: argparse.Namespace) -> None:
             ax = axs.flat[index]
             proj_true = projections_true[index]
             proj_pred = projections_pred[index]
-            scale = proj_true.values.max()
 
-            ax.plot(proj_true.coords, proj_true.values / scale, color="lightgray")
+            grid_values_true = grab(proj_true.values)
+            grid_values_pred = grab(proj_pred.values)
+            grid_coords = grab(proj_true.coords)
+            scale = grid_values_true.max()
+
+            ax.plot(grid_coords, grid_values_true / scale, color="lightgray")
             ax.plot(
-                proj_pred.coords,
-                proj_pred.values / scale,
+                grid_coords,
+                grid_values_pred / scale,
                 color="black",
                 marker=".",
                 lw=0,

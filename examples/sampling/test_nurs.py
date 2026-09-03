@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("--chains", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--kind", type=str, default="reg")
-    parser.add_argument("--max-doublings", type=int, default=10)
+    parser.add_argument("--max-doublings", type=int, default=5)
     parser.add_argument("--step-size", type=float, default=0.2)
     args = parser.parse_args()
 
