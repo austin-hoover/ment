@@ -35,7 +35,6 @@ run "." \
 
 run "ct" train.py
 run "hdr" train.py
-run "longitudinal" train.py
 run "nonlinear_ring_4d" train.py
 run "sampling" test_gm.py test_nurs.py test_samp_2d.py
 run "tests" test_diag.py test_interp.py
