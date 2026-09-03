@@ -26,7 +26,19 @@ parser.add_argument("--bins", type=int, default=80)
 parser.add_argument("--nsamp", type=int, default=1000)
 parser.add_argument("--seed", type=int, default=1234)
 parser.add_argument("--iters", type=int, default=1000)
-parser.add_argument("--method", type=str, default="differential_evolution")
+parser.add_argument(
+    "--method",
+    type=str,
+    default="differential-evolution",
+    choices=[
+        "nelder-mead",
+        "powell",
+        "l-bfgs-b",
+        "least-squares",
+        "differential-evolution",
+        "direct",
+    ],
+)
 args = parser.parse_args()
 
 
@@ -92,7 +104,7 @@ fitter = ment.CholeskyCovFitter(
     bound=1.00e02,
     verbose=True,
 )
-fitter.params *= 100  # move away from solution
+fitter.params *= 0.01  # move away from solution
 cov_matrix, fit_result = fitter.fit(method=args.method, iters=args.iters)
 
 
