@@ -41,7 +41,7 @@ class LagrangeFunction:
 
 
 class GridCache:
-    """Caches MENT probability factors for use with GridSampler."""
+    """Caches MENT probability factors on a ``GridSampler`` grid."""
 
     def __init__(
         self,
@@ -57,9 +57,11 @@ class GridCache:
         self.lagrange_functions = lagrange_functions
         self.prior = prior
         self.state = None
+        self.prob_interp = None
 
     def clear(self) -> None:
         self.state = None
+        self.prob_interp = None
 
     def build(self) -> dict:
         points = self.sampler.get_grid_points()
@@ -107,6 +109,10 @@ class GridCache:
                 prob *= values
         prob = torch.nan_to_num(prob, nan=0.0, posinf=0.0, neginf=0.0)
         self.state["prob_values"] = torch.clamp(prob, min=0.0)
+        self.prob_interp = RegularGridInterpolator(
+            self.sampler.coords,
+            self.state["prob_values"].reshape(self.sampler.shape),
+        )
 
     def refresh_lagrange(self, index: int, diag_index: int) -> None:
         if self.state is None:
@@ -123,6 +129,20 @@ class GridCache:
         cache = self.ensure()
         values = cache["prob_values"]
         return self.sampler.sample_values(values, size)
+
+    def prob(self, points: torch.Tensor, squeeze: bool = True) -> torch.Tensor:
+        """Interpolate the cached density at normalized phase-space points."""
+        self.ensure()
+        if self.prob_interp is None:
+            self.prob_interp = RegularGridInterpolator(
+                self.sampler.coords,
+                self.state["prob_values"].reshape(self.sampler.shape),
+            )
+
+        if points.ndim == 1:
+            points = points[None, :]
+        values = self.prob_interp(points)
+        return torch.squeeze(values) if squeeze else values
 
 
 class MENT:
@@ -180,9 +200,10 @@ class MENT:
             Key word arguments passed to `Histogram` constructor. Options include
             `blur`, `thresh`, and `thresh_type`.
         cache_grid:
-            If True, cache probability values on a ``GridSampler`` grid and sample
-            from those cached values. If None, this is enabled automatically for
-            compatible grid samplers in sample/forward mode.
+            If True, cache probability values on a ``GridSampler`` grid. Sampling
+            draws directly from those values, while reverse/integration mode uses
+            multilinear interpolation of the cached density. If None, caching is
+            enabled automatically only in sample/forward mode.
         verbose:
             Whether to print updates during calculations.
         mode:
@@ -241,7 +262,9 @@ class MENT:
         self.nsamp = int(nsamp)
         self.cache_grid = cache_grid
         if self.cache_grid is None:
-            self.cache_grid = isinstance(self.sampler, GridSampler)
+            self.cache_grid = self.mode in ["sample", "forward"] and isinstance(
+                self.sampler, GridSampler
+            )
         self._grid_cache = None
 
         # Integration
@@ -335,11 +358,7 @@ class MENT:
         return prob
 
     def _grid_cache_enabled(self) -> bool:
-        return (
-            self.cache_grid
-            and self.mode in ["sample", "forward"]
-            and isinstance(self.sampler, GridSampler)
-        )
+        return self.cache_grid and isinstance(self.sampler, GridSampler)
 
     def _ensure_grid_cache(self) -> GridCache:
         if self._grid_cache is None:
@@ -360,6 +379,11 @@ class MENT:
     def _sample_grid_cache(self, size: int) -> torch.Tensor:
         return self._ensure_grid_cache().sample(size)
 
+    def _integration_prob(self, z: torch.Tensor) -> torch.Tensor:
+        if self._grid_cache_enabled():
+            return self._ensure_grid_cache().prob(z)
+        return self.prob(z)
+
     @property
     def grid_cache(self) -> dict | None:
         if self._grid_cache is None:
@@ -372,7 +396,9 @@ class MENT:
             if self._grid_cache is not None:
                 self._grid_cache.clear()
             return
-        self._ensure_grid_cache().state = value
+        cache = self._ensure_grid_cache()
+        cache.state = value
+        cache.prob_interp = None
 
     def sample(self, size: int, **kws) -> torch.Tensor:
         """Sample `size` particles from the distribution in normalized space.
@@ -522,7 +548,9 @@ class MENT:
                     # Compute the probability density at the integration points.
                     # Here we assume a volume-preserving transformation with Jacobian
                     # determinant equal to 1, such that p(x) = p(u).
-                    prob = self.prob(self.normalize(transform.inverse(x_out)))
+                    prob = self._integration_prob(
+                        self.normalize(transform.inverse(x_out))
+                    )
 
                     # Sum over all integration points.
                     values_proj[i] = torch.sum(prob)
@@ -572,7 +600,9 @@ class MENT:
 
                 grid_shape = tuple([len(c) for c in grid_coords])
                 grid_points = get_grid_points(grid_coords)
-                grid_values = self.prob(self.normalize(transform.inverse(grid_points)))
+                grid_values = self._integration_prob(
+                    self.normalize(transform.inverse(grid_points))
+                )
                 grid_values = grid_values.reshape(grid_shape)
                 values_proj = torch.sum(grid_values, axis=integration_axis)
 
@@ -684,7 +714,11 @@ class MENT:
         self.prior = state["prior"]
         self.sampler = state["sampler"]
         self.set_unnorm_matrix(state["unnorm_matrix"])
-        self.cache_grid = state.get("cache_grid", isinstance(self.sampler, GridSampler))
+        self.cache_grid = state.get(
+            "cache_grid",
+            self.mode in ["sample", "forward"]
+            and isinstance(self.sampler, GridSampler),
+        )
         self._grid_cache = None
 
         file.close()
