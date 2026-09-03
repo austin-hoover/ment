@@ -69,3 +69,30 @@ def test_simulate_returns_copied_diagnostics_with_binned_values():
     assert torch.allclose(
         torch.sum(simulated_hist.values * simulated_hist.bin_width), torch.tensor(1.0)
     )
+
+
+def test_reverse_integration_returns_one_value_per_multidimensional_grid_point():
+    edges = [torch.linspace(-2.0, 2.0, 5), torch.linspace(-3.0, 3.0, 7)]
+    projection = ment.HistogramND(
+        axis=(0, 2),
+        edges=edges,
+        values=torch.ones(4, 6),
+    )
+    model = ment.MENT(
+        ndim=4,
+        transforms=[ment.IdentityTransform()],
+        projections=[[projection]],
+        prior=ment.GaussianPrior(ndim=4, scale=1.0),
+        sampler=ment.GridSampler(limits=4 * [(-3.0, 3.0)], shape=4 * (4,)),
+        integration_limits=[[[(-2.0, 2.0), (-3.0, 3.0)]]],
+        integration_size=4,
+        mode="reverse",
+        verbose=0,
+    )
+
+    simulated = model.simulate_single(index=0, diag_index=0)
+
+    assert simulated.values.shape == projection.shape
+    assert torch.isclose(
+        torch.sum(simulated.values * simulated.bin_volume), torch.tensor(1.0)
+    )

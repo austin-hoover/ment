@@ -504,8 +504,11 @@ class MENT:
                     else:
                         x_out[:, axis] = integration_points[:, k]
 
-                # Initialize array of projected densities (values_proj).
-                values_proj = torch.zeros_like(projection_points)
+                # Store one density value per point on the projection grid.  For
+                # multidimensional diagnostics, projection_points has shape
+                # (n_points, diagnostic.ndim), so zeros_like would incorrectly
+                # allocate one value per coordinate component.
+                values_proj = projection_points.new_zeros(projection_points.shape[0])
                 for i, point in enumerate(
                     wrap_tqdm(projection_points, self.verbose > 1)
                 ):
