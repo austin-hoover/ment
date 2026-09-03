@@ -27,7 +27,7 @@ def array_to_tensor(x: np.ndarray) -> torch.Tensor:
 
 def coords_to_edges(coords: torch.Tensor) -> torch.Tensor:
     delta = coords[1] - coords[0]
-    edges = torch.zeros(len(coords) + 1)
+    edges = coords.new_zeros(len(coords) + 1)
     edges[:-1] = coords - 0.5 * delta
     edges[-1] = coords[-1] + 0.5 * delta
     return edges
@@ -55,7 +55,7 @@ def random_choice(
 
 
 def random_shuffle(items: torch.Tensor, rng: torch.Generator = None) -> torch.Tensor:
-    idx = torch.randperm(items.shape[0])
+    idx = torch.randperm(items.shape[0], device=items.device, generator=rng)
     return items[idx]
 
 

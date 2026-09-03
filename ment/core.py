@@ -144,6 +144,7 @@ class MENT:
         cache_grid: bool = None,
         verbose: int = 1,
         mode: str = "sample",
+        device: torch.device | str = None,
     ) -> None:
         """Constructor.
 
@@ -187,13 +188,20 @@ class MENT:
         mode:
             Whether to use numerical integration or particle sampling to compute
             projections. {"sample" or "forward", "integration" or "backward"}
+        device:
+            PyTorch device.
         """
         self.ndim = ndim
         self.verbose = int(verbose)
         self.mode = mode
+        self.device = torch.device(device) if device is not None else None
 
         # Set transforms and projection data
         self.transforms = transforms
+        if self.device is not None:
+            for transform in self.transforms:
+                if hasattr(transform, "to"):
+                    transform.to(self.device)
         self.projections = self.set_projections(projections)
 
         # Setup histogram diagnostics.
@@ -216,6 +224,8 @@ class MENT:
         self.prior = prior
         if self.prior is None:
             self.prior = InfiniteUniformPrior(ndim=ndim)
+        if self.device is not None and hasattr(self.prior, "to"):
+            self.prior.to(self.device)
 
         # Normalization matrix
         self.unnorm_matrix = unnorm_matrix
@@ -226,6 +236,8 @@ class MENT:
 
         # Sampling
         self.sampler = sampler
+        if self.device is not None and hasattr(self.sampler, "to"):
+            self.sampler.to(self.device)
         self.nsamp = int(nsamp)
         self.cache_grid = cache_grid
         if self.cache_grid is None:
@@ -251,8 +263,8 @@ class MENT:
         """
         self.unnorm_matrix = unnorm_matrix
         if self.unnorm_matrix is None:
-            self.unnorm_matrix = torch.eye(self.ndim)
-        self.unnorm_matrix = self.unnorm_matrix.float()
+            self.unnorm_matrix = torch.eye(self.ndim, device=self.device)
+        self.unnorm_matrix = self.unnorm_matrix.to(device=self.device).float()
         self.unnorm_matrix_det = torch.linalg.det(self.unnorm_matrix)
         self.norm_matrix = torch.linalg.inv(self.unnorm_matrix)
         self.norm_matrix_det = torch.linalg.det(self.norm_matrix)
@@ -266,6 +278,9 @@ class MENT:
         self.projections = projections
         if self.projections is None:
             self.projections = [[]]
+        if self.device is not None:
+            for projection in unravel(self.projections):
+                projection.to(self.device)
         return self.projections
 
     def init_lagrange_functions(self) -> list[list[LagrangeFunction]]:
@@ -280,7 +295,7 @@ class MENT:
         for index in range(len(self.projections)):
             self.lagrange_functions.append([])
             for projection in self.projections[index]:
-                values = torch.zeros(projection.shape)
+                values = torch.zeros_like(projection.values)
                 values[projection.values > 0.0] = 1.0
                 lagrange_function = LagrangeFunction(projection)
                 lagrange_function.set_values(values)
@@ -307,7 +322,7 @@ class MENT:
 
         x = self.unnormalize(z)
 
-        prob = torch.ones(z.shape[0])
+        prob = torch.ones(z.shape[0], device=z.device, dtype=z.dtype)
         for index, transform in enumerate(self.transforms):
             x_out = transform(x)
             for lagrange_function in self.lagrange_functions[index]:
@@ -416,6 +431,7 @@ class MENT:
                     integration_limits[i][0],
                     integration_limits[i][1],
                     integration_grid_shape[i],
+                    device=self.device,
                 )
                 for i in range(integration_ndim)
             ]
@@ -477,7 +493,11 @@ class MENT:
                 integration_points = self._get_integration_points(index, diag_index)
 
                 # Initialize array of integration points (x_out).
-                x_out = torch.zeros((integration_points.shape[0], self.ndim))
+                x_out = torch.zeros(
+                    (integration_points.shape[0], self.ndim),
+                    device=integration_points.device,
+                    dtype=integration_points.dtype,
+                )
                 for k, axis in enumerate(integration_axis):
                     if integration_ndim == 1:
                         x_out[:, axis] = integration_points
@@ -485,7 +505,7 @@ class MENT:
                         x_out[:, axis] = integration_points[:, k]
 
                 # Initialize array of projected densities (values_proj).
-                values_proj = torch.zeros(projection_points.shape[0])
+                values_proj = torch.zeros_like(projection_points)
                 for i, point in enumerate(
                     wrap_tqdm(projection_points, self.verbose > 1)
                 ):
@@ -535,6 +555,7 @@ class MENT:
                         integration_limits[i][0],
                         integration_limits[i][1],
                         integration_grid_shape[i],
+                        device=self.device,
                     )
                     for i in range(integration_ndim)
                 ]
@@ -605,7 +626,7 @@ class MENT:
                 idx = torch.logical_and(
                     values_meas > min_value, values_pred > min_value
                 )
-                ratio = torch.ones(values_lagr.shape)
+                ratio = torch.ones_like(values_lagr)
                 ratio[idx] = values_meas[idx] / values_pred[idx]
                 values_lagr *= 1.0 + lr * (ratio - 1.0)
 

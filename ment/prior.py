@@ -19,6 +19,13 @@ class Prior:
     def sample(self, size: int) -> torch.Tensor:
         raise NotImplementedError
 
+    def to(self, device: torch.device | str) -> "Prior":
+        """Move tensor parameters to ``device`` in place."""
+        for name, value in vars(self).items():
+            if isinstance(value, torch.Tensor):
+                setattr(self, name, value.to(device))
+        return self
+
 
 class GaussianPrior(Prior):
     def __init__(self, scale: torch.Tensor | float, **kws) -> None:
@@ -40,4 +47,4 @@ class InfiniteUniformPrior(Prior):
         super().__init__(**kws)
 
     def prob(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.ones(x.shape[0])
+        return torch.ones(x.shape[0], device=x.device, dtype=x.dtype)
