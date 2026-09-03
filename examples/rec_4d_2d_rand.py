@@ -39,7 +39,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--samp-grid-noise", type=float, default=0.0)
     parser.add_argument("--samp-chains", type=int, default=100)
     parser.add_argument("--samp-size", type=int, default=100_000)
-    parser.add_argument("--int-size", type=int, default=(50**2))
+    parser.add_argument("--int-grid-res", type=int, default=50)
+    parser.add_argument("--int-loop", type=int, default=0)
+    parser.add_argument("--cache-grid", type=int, default=1)
     parser.add_argument("--iters", type=int, default=3)
     parser.add_argument("--lr", type=float, default=0.75)
     parser.add_argument("--seed", type=int, default=123)
@@ -157,9 +159,11 @@ def main(args: argparse.Namespace) -> None:
         prior=prior,
         sampler=sampler,
         integration_limits=integration_limits,
-        integration_size=(args.int_size**2),
+        integration_size=(args.int_grid_res**2),
+        integration_loop=args.int_loop,
         nsamp=args.samp_size,
         mode=args.mode,
+        cache_grid=args.cache_grid,
         verbose=True,
     )
 
