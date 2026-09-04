@@ -31,9 +31,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode", type=str, default="reverse", choices=["reverse", "forward"]
     )
-    parser.add_argument("--samp-method", type=str, default="mh")
-    parser.add_argument("--samp-chains", type=int, default=100)
-    parser.add_argument("--samp-size", type=int, default=100_000)
+    parser.add_argument(
+        "--samp-method", type=str, default="mh", choices=["mh", "grid", "hmc", "nurs"]
+    )
+    parser.add_argument("--samp-chain-steps", type=int, default=1000)
+    parser.add_argument("--samp-burnin", type=int, default=10)
+    parser.add_argument("--samp-warm-start", type=int, default=1)
+    parser.add_argument("--samp-grid-res", type=int, default=15)
+    parser.add_argument("--samp-grid-noise", type=float, default=0.0)
+    parser.add_argument("--samp-nurs-max-doublings", type=int, default=5)
+    parser.add_argument("--nsamp", type=int, default=100_000)
     parser.add_argument("--iters", type=int, default=3)
     parser.add_argument("--lr", type=float, default=0.75)
     parser.add_argument("--seed", type=int, default=123)
@@ -97,44 +104,54 @@ def main(args: argparse.Namespace) -> None:
 
     prior = ment.GaussianPrior(ndim=ndim, scale=1.0)
 
+    sampler = None
+
     if args.samp_method == "grid":
-        samp_grid_shape = ndim * [32]
-        samp_grid_limits = limits
         sampler = ment.samp.GridSampler(
-            limits=samp_grid_limits,
-            shape=samp_grid_shape,
-            noise=0.5,
+            limits=limits,
+            shape=(ndim * [args.samp_grid_res]),
+            noise=args.samp_grid_noise,
         )
-    elif args.samp_method == "hmc":
-        chains = args.samp_chains
-        sampler = ment.HamiltonianMonteCarloSampler(
-            ndim=ndim,
-            start=torch.randn((chains, ndim)) * 0.25**2,
-            step_size=0.25,
-            steps_per_samp=10,
-            burnin=10,
-            verbose=1,
-        )
-    elif args.samp_method == "mh":
-        chains = args.samp_chains
+
+    if args.samp_method in ["hmc", "nurs", "mh"]:
+        chains = args.nsamp // args.samp_chain_steps
+        start = 0.5 * torch.randn(chains, ndim)
+
+    if args.samp_method == "mh":
+        prop_cov = (0.5**2) * torch.eye(ndim)
         sampler = ment.MetropolisHastingsSampler(
             ndim=ndim,
-            start=torch.randn((chains, ndim)) * 0.25**2,
-            proposal_cov=torch.eye(ndim) * 0.25**2,
-            burnin=1,
+            start=start,
+            proposal_cov=prop_cov,
+            burnin=args.samp_burnin,
+            shuffle=True,
             verbose=1,
+            noise=0.10,  # slight smoothing
+            noise_type="gaussian",
+            warm_start=args.samp_warm_start,
         )
-    elif args.samp_method == "nurs":
-        chains = args.samp_chains
+
+    if args.samp_method == "hmc":
+        sampler = ment.HamiltonianMonteCarloSampler(
+            ndim=ndim,
+            start=start,
+            step_size=0.25,
+            steps_per_samp=10,
+            burnin=args.samp_burnin,
+            verbose=1,
+            warm_start=args.samp_warm_start,
+        )
+
+    if args.samp_method == "nurs":
         sampler = ment.NURSSampler(
             ndim=ndim,
             start=torch.randn((chains, ndim)),
             step_size=1,
-            max_doublings=10,
+            max_doublings=args.samp_nurs_max_doublings,
             threshold=1e-5,
+            verbose=1,
+            warm_start=args.samp_warm_start,
         )
-    else:
-        raise ValueError
 
     model = ment.MENT(
         ndim=ndim,
@@ -142,7 +159,7 @@ def main(args: argparse.Namespace) -> None:
         projections=projections,
         prior=prior,
         sampler=sampler,
-        nsamp=args.samp_size,
+        nsamp=args.nsamp,
         mode="forward",
         verbose=True,
     )

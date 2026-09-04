@@ -135,7 +135,7 @@ def main(args: argparse.Namespace) -> None:
         figs = []
 
         # Sample particles
-        x_pred = model.sample(1_000_000)
+        x_pred = model.unnormalize(model.sample(1_000_000))
 
         # Simulate data
         projections_true = ment.unravel(model.projections)
@@ -180,7 +180,7 @@ def main(args: argparse.Namespace) -> None:
             )
             ax.set_ylim(ax.get_ylim()[0], 1.25)
             ax.set_xlim(limits[0])
-            figs.append(fig)
+        figs.append(fig)
 
         return figs
 

@@ -117,6 +117,13 @@ class MetropolisHastingsSampler(Sampler):
 
         points = points[self.burnin :]
 
+        # The target may change between calls (as it does during MENT updates).
+        # Retain one endpoint per chain so the next walk starts from samples of
+        # the preceding, typically nearby, target distribution.
+        if self.warm_start:
+            self.start = points[-1].detach().clone()
+            self.start *= 1.0 + 0.1 * torch.randn_like(self.start)
+
         # Debug
         if self.verbose > 1:
             print("debug acceptance rate =", self.results["acceptance_rate"])

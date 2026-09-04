@@ -18,6 +18,7 @@ class Sampler:
         noise: float = 0.0,
         noise_type: float = "gaussian",
         shuffle: bool = False,
+        warm_start: bool = False,
     ) -> None:
         self.ndim = ndim
         self.verbose = verbose
@@ -38,6 +39,7 @@ class Sampler:
         self.noise = noise
         self.noise_type = noise_type
         self.shuffle = shuffle
+        self.warm_start = warm_start
 
         self.results = {}
 

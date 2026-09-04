@@ -36,8 +36,9 @@ parser.add_argument(
 parser.add_argument(
     "--samp-method", type=str, default="mh", choices=["mh", "grid", "hmc", "nurs"]
 )
-parser.add_argument("--samp-chains", type=int, default=500)
-parser.add_argument("--samp-burnin", type=int, default=100)
+parser.add_argument("--samp-chain-steps", type=int, default=1000)
+parser.add_argument("--samp-burnin", type=int, default=10)
+parser.add_argument("--samp-warm-start", type=int, default=1)
 parser.add_argument("--samp-grid-res", type=int, default=15)
 parser.add_argument("--samp-grid-noise", type=float, default=0.0)
 parser.add_argument("--samp-nurs-max-doublings", type=int, default=5)
@@ -133,7 +134,7 @@ if args.samp_method == "grid":
     )
 
 if args.samp_method in ["hmc", "nurs", "mh"]:
-    chains = args.samp_chains
+    chains = args.nsamp // args.samp_chain_steps
     start = 0.5 * torch.randn(chains, ndim)
 
 if args.samp_method == "mh":
@@ -147,6 +148,7 @@ if args.samp_method == "mh":
         verbose=1,
         noise=0.10,  # slight smoothing
         noise_type="gaussian",
+        warm_start=args.samp_warm_start,
     )
 
 if args.samp_method == "hmc":
@@ -157,6 +159,7 @@ if args.samp_method == "hmc":
         steps_per_samp=10,
         burnin=args.samp_burnin,
         verbose=1,
+        warm_start=args.samp_warm_start,
     )
 
 if args.samp_method == "nurs":
@@ -167,6 +170,7 @@ if args.samp_method == "nurs":
         max_doublings=args.samp_nurs_max_doublings,
         threshold=1e-5,
         verbose=1,
+        warm_start=args.samp_warm_start,
     )
 
 model = ment.MENT(
