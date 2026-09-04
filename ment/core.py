@@ -165,6 +165,7 @@ class MENT:
         verbose: int = 1,
         mode: str = "sample",
         device: torch.device | str = None,
+        mpi_comm: Any = None,
     ) -> None:
         """Constructor.
 
@@ -185,8 +186,8 @@ class MENT:
         sampler:
             Calling `sampler(p, n)` generates `n` samples from the PDF `p`.
         nsamp:
-            Number of samples to use when computing projections. Only relevant if
-            `self.mode=="sample".
+            Number of samples to use when computing projections. Only relevant in
+            sample/forward mode. This is the global count when ``mpi_comm`` is provided.
         integration_limits:
             List of (min, max) coordinates of integration grid.
         integration_size:
@@ -211,11 +212,16 @@ class MENT:
             projections. {"sample" or "forward", "integration" or "backward"}
         device:
             PyTorch device.
+        mpi_comm:
+            Optional MPI communicator. In sample/forward mode, ``nsamp`` is treated
+            as the global sample count: it is divided among communicator ranks and
+            the unnormalized histogram counts are summed before processing.
         """
         self.ndim = ndim
         self.verbose = int(verbose)
         self.mode = mode
         self.device = torch.device(device) if device is not None else None
+        self.mpi_comm = mpi_comm
 
         # Set transforms and projection data
         self.transforms = transforms
@@ -274,6 +280,27 @@ class MENT:
         self.integration_loop = integration_loop
 
         self.iteration = 0
+
+    def local_sample_size(self, size: int) -> int:
+        """Return this rank's share of a global sample count."""
+        size = int(size)
+        if self.mpi_comm is None:
+            return size
+
+        mpi_comm_size = self.mpi_comm.Get_size()
+        rank = self.mpi_comm.Get_rank()
+        quotient, remainder = divmod(size, mpi_comm_size)
+        return quotient + int(rank < remainder)
+
+    def _allreduce_sum(self, values: torch.Tensor) -> torch.Tensor:
+        """Sum a tensor over MPI ranks, preserving its device and dtype."""
+        if self.mpi_comm is None:
+            return values
+
+        send = values.detach().cpu().contiguous().numpy()
+        recv = np.empty_like(send)
+        self.mpi_comm.Allreduce(send, recv)
+        return torch.as_tensor(recv, device=values.device, dtype=values.dtype)
 
     def set_unnorm_matrix(self, unnorm_matrix: torch.Tensor) -> None:
         """Set normalization matrix.
@@ -496,9 +523,10 @@ class MENT:
         diagnostic.values *= 0.0
 
         if self.mode in ["sample", "forward"]:
-            values_proj = diagnostic(
-                transform(self.unnormalize(self.sample(self.nsamp)))
-            )
+            local_nsamp = self.local_sample_size(self.nsamp)
+            x_proj = transform(self.unnormalize(self.sample(local_nsamp)))
+            values_proj = diagnostic.bin_counts(x_proj)
+            values_proj = self._allreduce_sum(values_proj)
 
         elif self.mode in ["integrate", "reverse"]:
             # Get projection grid axis.

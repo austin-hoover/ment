@@ -43,6 +43,14 @@ def test_cached_grid_sampling_returns_requested_shape():
     assert model.grid_cache["prob_values"].shape == (32 * 32,)
 
 
+def test_cached_grid_sampling_preserves_batch_axis_for_one_sample():
+    model = make_cached_grid_model()
+
+    samples = model.sample(1)
+
+    assert samples.shape == (1, 2)
+
+
 def test_cached_grid_lagrange_values_refresh_after_gauss_seidel_update():
     model = make_cached_grid_model()
     model.sample(128)

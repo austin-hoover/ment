@@ -24,6 +24,17 @@ def test_histogram1d_bin_normalizes_density():
     assert torch.allclose(torch.sum(values * hist.bin_width), torch.tensor(1.0))
 
 
+def test_histogram1d_bin_counts_returns_counts_without_modifying_histogram():
+    edges = torch.tensor([0.0, 1.0, 2.0])
+    hist = ment.Histogram1D(axis=0, edges=edges)
+    x = torch.tensor([[0.25], [0.75], [1.25]])
+
+    counts = hist.bin_counts(x)
+
+    assert torch.equal(counts, torch.tensor([2.0, 1.0]))
+    assert torch.equal(hist.values, torch.zeros(2))
+
+
 def test_histogram1d_direction_projection():
     hist = ment.Histogram1D(
         edges=torch.tensor([-2.0, -1.0, 0.0, 1.0, 2.0]),

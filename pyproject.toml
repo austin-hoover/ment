@@ -17,6 +17,9 @@ test = [
     "scikit-image",
     "xarray",
 ]
+mpi = [
+    "mpi4py",
+]
 
 [build-system]
 requires = [

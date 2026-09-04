@@ -125,10 +125,14 @@ class HistogramND(Histogram):
         return x[:, self.axis]
 
     def bin(self, x: torch.Tensor) -> torch.Tensor:
-        x_proj = self.project(x)
-        self.values = torch.histogramdd(x_proj, bins=self.edges, density=True).hist
+        self.values = self.bin_counts(x)
         self.process()
         return self.values
+
+    def bin_counts(self, x: torch.Tensor) -> torch.Tensor:
+        """Return unnormalized bin counts without modifying the histogram."""
+        x_proj = self.project(x)
+        return torch.histogramdd(x_proj, bins=self.edges, density=False).hist
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         return self.bin(x)
@@ -230,10 +234,14 @@ class Histogram1D(Histogram):
         return x[:, self.axis]
 
     def bin(self, x: torch.Tensor) -> torch.Tensor:
-        x_proj = self.project(x)
-        self.values = torch.histogram(x_proj, bins=self.edges, density=True).hist
+        self.values = self.bin_counts(x)
         self.process()
         return self.values
+
+    def bin_counts(self, x: torch.Tensor) -> torch.Tensor:
+        """Return unnormalized bin counts without modifying the histogram."""
+        x_proj = self.project(x)
+        return torch.histogram(x_proj, bins=self.edges, density=False).hist
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         return self.bin(x)

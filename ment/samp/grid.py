@@ -102,7 +102,7 @@ class GridSampler(Sampler):
 
         if self.shuffle:
             x = random_shuffle(x, rng=self.rng)
-        return torch.squeeze(x)
+        return x
 
     def _sample(self, prob_func: Callable, size: int) -> torch.Tensor:
         """Sample from distribution function."""

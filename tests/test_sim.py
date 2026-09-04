@@ -2,6 +2,24 @@ import torch
 import ment
 
 
+class _TwoRankComm:
+    def Get_size(self):
+        return 2
+
+    def Get_rank(self):
+        return 0
+
+    def Allreduce(self, send, recv):
+        # Pretend rank 1 contributed one particle to the second bin.
+        recv[:] = send + torch.tensor([0.0, 1.0]).numpy()
+
+
+class _FixedSampler:
+    def __call__(self, prob_func, size, **kws):
+        assert size == 1
+        return torch.tensor([[0.25]])
+
+
 def test_identity_transform_forward_and_inverse_return_input():
     transform = ment.IdentityTransform()
     x = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
@@ -69,6 +87,30 @@ def test_simulate_returns_copied_diagnostics_with_binned_values():
     assert torch.allclose(
         torch.sum(simulated_hist.values * simulated_hist.bin_width), torch.tensor(1.0)
     )
+
+
+def test_forward_simulation_partitions_samples_and_reduces_counts():
+    projection = ment.Histogram1D(
+        axis=0,
+        edges=torch.tensor([0.0, 1.0, 2.0]),
+        values=torch.ones(2),
+    )
+    model = ment.MENT(
+        ndim=1,
+        transforms=[ment.IdentityTransform()],
+        projections=[[projection]],
+        prior=ment.GaussianPrior(ndim=1, scale=1.0),
+        sampler=_FixedSampler(),
+        nsamp=2,
+        mode="forward",
+        verbose=0,
+        comm=_TwoRankComm(),
+    )
+
+    simulated = model.simulate_single(index=0, diag_index=0)
+
+    assert model.local_sample_size(3) == 2
+    assert torch.allclose(simulated.values, torch.tensor([0.5, 0.5]))
 
 
 def test_reverse_integration_returns_one_value_per_multidimensional_grid_point():
