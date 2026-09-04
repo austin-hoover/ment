@@ -26,19 +26,28 @@ parser.add_argument(
     default="gaussian-mixture",
     choices=["gaussian-mixture", "rings", "gaussian", "waterbag", "kv"],
 )
+parser.add_argument("--dist-noise", type=float, default=0.1)
 parser.add_argument("--ndim", type=int, default=6)
 parser.add_argument("--nbins", type=int, default=64)
 parser.add_argument("--xmax", type=float, default=3.5)
 parser.add_argument(
     "--mode", type=str, default="reverse", choices=["reverse", "forward"]
 )
-parser.add_argument("--samp-method", type=str, default="mh")
-parser.add_argument("--samp-grid-res", type=int, default=32)
+parser.add_argument(
+    "--samp-method", type=str, default="mh", choices=["mh", "grid", "hmc", "nurs"]
+)
+parser.add_argument("--samp-chain-steps", type=int, default=1000)
+parser.add_argument("--samp-burnin", type=int, default=10)
+parser.add_argument("--samp-warm-start", type=int, default=1)
+parser.add_argument("--samp-grid-res", type=int, default=15)
 parser.add_argument("--samp-grid-noise", type=float, default=0.0)
+parser.add_argument("--samp-nurs-max-doublings", type=int, default=5)
+parser.add_argument("--nsamp", type=int, default=100_000)
 parser.add_argument("--iters", type=int, default=3)
 parser.add_argument("--lr", type=float, default=0.75)
 parser.add_argument("--seed", type=int, default=123)
 parser.add_argument("--show", action="store_true")
+parser.add_argument("--eval-nsamp", type=int, default=100_000)
 args = parser.parse_args()
 
 
@@ -58,7 +67,7 @@ ndim = args.ndim
 xmax = args.xmax
 seed = args.seed
 
-dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=seed)
+dist = ment.dist.get_dist(args.dist, ndim=ndim, seed=seed, noise=args.dist_noise)
 x_true = dist.sample(1_000_000)
 x_true = x_true.float()
 
@@ -115,35 +124,54 @@ projections = ment.simulate_with_diag_update(
 
 prior = ment.GaussianPrior(ndim=ndim, scale=1.0)
 
-samp_method = args.samp_method
+sampler = None
 
-if samp_method == "grid":
+if args.samp_method == "grid":
     sampler = ment.samp.GridSampler(
         limits=limits,
         shape=(ndim * [args.samp_grid_res]),
         noise=args.samp_grid_noise,
     )
 
-elif samp_method == "mh":
-    samp_burnin = 500
-    samp_chains = 1000
-    samp_prop_cov = torch.eye(ndim) * (0.5**2)
-    samp_start = torch.randn(samp_chains, ndim) * 0.5
+if args.samp_method in ["hmc", "nurs", "mh"]:
+    chains = args.nsamp // args.samp_chain_steps
+    start = 0.5 * torch.randn(chains, ndim)
 
+if args.samp_method == "mh":
+    prop_cov = (0.5**2) * torch.eye(ndim)
     sampler = ment.MetropolisHastingsSampler(
         ndim=ndim,
-        start=samp_start,
-        proposal_cov=samp_prop_cov,
-        burnin=samp_burnin,
+        start=start,
+        proposal_cov=prop_cov,
+        burnin=args.samp_burnin,
         shuffle=True,
         verbose=1,
         noise=0.10,  # slight smoothing
         noise_type="gaussian",
+        warm_start=args.samp_warm_start,
     )
 
-else:
-    raise ValueError
+if args.samp_method == "hmc":
+    sampler = ment.HamiltonianMonteCarloSampler(
+        ndim=ndim,
+        start=start,
+        step_size=0.25,
+        steps_per_samp=10,
+        burnin=args.samp_burnin,
+        verbose=1,
+        warm_start=args.samp_warm_start,
+    )
 
+if args.samp_method == "nurs":
+    sampler = ment.NURSSampler(
+        ndim=ndim,
+        start=torch.randn((chains, ndim)),
+        step_size=1,
+        max_doublings=args.samp_nurs_max_doublings,
+        threshold=1e-5,
+        verbose=1,
+        warm_start=args.samp_warm_start,
+    )
 
 model = ment.MENT(
     ndim=ndim,
@@ -151,7 +179,7 @@ model = ment.MENT(
     projections=projections,
     prior=prior,
     sampler=sampler,
-    nsamp=100_000,
+    nsamp=args.nsamp,
     mode="forward",
     verbose=True,
 )
@@ -160,10 +188,10 @@ model = ment.MENT(
 # Training
 # --------------------------------------------------------------------------------------
 
-plot_nsamp = x_true.shape[0]
+eval_nsamp = args.eval_nsamp or x_true.shape[0]
 
 plot_model = Plotter(
-    n_samples=plot_nsamp,
+    n_samples=eval_nsamp,
     plot_proj=[
         PlotProj2DContour(),
     ],
@@ -176,7 +204,7 @@ plot_model = Plotter(
     ],
 )
 
-eval_model = ment.train.Evaluator(nsamp=100_000)
+eval_model = ment.train.Evaluator(nsamp=eval_nsamp)
 
 trainer = ment.train.Trainer(
     model,

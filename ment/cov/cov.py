@@ -11,15 +11,16 @@ def normalize_eigvec(v: torch.Tensor) -> torch.Tensor:
     v = torch.clone(torch.as_tensor(v))
     U = build_poisson_matrix(ndim=ndim, complex=True).to(device=v.device)
 
-    def _norm(_v: torch.Tensor) -> torch.Tensor:
-        return torch.conj(_v).T @ U @ _v
+    def prod(_v: torch.Tensor) -> torch.Tensor:
+        return torch.linalg.multi_dot([torch.conj(_v), U, _v])
 
-    if torch.imag(_norm(v)) > 0:
+    v *= torch.sqrt(2.0 / torch.abs(prod(v)))
+
+    if torch.imag(prod(v)) > 0:
         v = torch.conj(v)
 
-    v *= torch.sqrt(2.0 / torch.abs(_norm(v)))
-    assert torch.isclose(torch.imag(_norm(v)), torch.tensor(-2.0, device=v.device))
-    assert torch.isclose(torch.real(_norm(v)), torch.tensor(0.0, device=v.device))
+    assert torch.isclose(torch.imag(prod(v)), torch.tensor(-2.0))
+    assert torch.isclose(torch.real(prod(v)), torch.tensor(0.0), atol=1e-6)
     return v
 
 

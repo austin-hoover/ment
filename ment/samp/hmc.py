@@ -183,6 +183,7 @@ def sample(
 
     results = {}
     results["samples"] = samples
+    results["final_state"] = x.detach().clone()
     results["acceptance_rate"] = acceptance_rate
     return results
 
@@ -229,4 +230,8 @@ class HamiltonianMonteCarloSampler(Sampler):
         )
         self.results = results
         samples = self.results.pop("samples")
+        final_state = self.results.pop("final_state")
+        if self.warm_start:
+            self.start = final_state
+            self.start *= 1.0 + 0.1 * torch.randn_like(self.start)
         return samples

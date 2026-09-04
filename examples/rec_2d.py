@@ -179,8 +179,7 @@ def main(args: argparse.Namespace) -> None:
             )
             ax.set_ylim(ax.get_ylim()[0], 1.25)
             ax.set_xlim(limits[0])
-            figs.append(fig)
-
+        figs.append(fig)
         return figs
 
     for iteration in range(args.iters):

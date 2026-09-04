@@ -331,6 +331,10 @@ class NURSSampler(Sampler):
             max_doublings=self.max_doublings,
             threshold=self.threshold,
         )
+        if self.warm_start:
+            self.start = x[-1].detach().clone()
+            self.start *= 1.0 + 0.1 * torch.randn_like(self.start)
+
         x = x.reshape(x.shape[0] * x.shape[1], x.shape[2])
         x = x[:size]
         return x
