@@ -30,12 +30,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--xmax", type=float, default=3.5)
     parser.add_argument("--mode", type=str, default="forward")
     parser.add_argument(
-        "--samp-method", type=str, default="mh", choices=["mh", "grid", "hmc", "nurs"]
+        "--samp-method", type=str, default="grid", choices=["mh", "grid", "hmc", "nurs"]
     )
     parser.add_argument("--samp-chain-steps", type=int, default=1000)
     parser.add_argument("--samp-burnin", type=int, default=10)
     parser.add_argument("--samp-warm-start", type=int, default=1)
-    parser.add_argument("--samp-grid-res", type=int, default=15)
+    parser.add_argument("--samp-grid-res", type=int, default=32)
     parser.add_argument("--samp-grid-noise", type=float, default=0.0)
     parser.add_argument("--samp-nurs-max-doublings", type=int, default=5)
     parser.add_argument("--nsamp", type=int, default=100_000)
